@@ -1,67 +1,53 @@
-import { useState } from "react";
-import MLSCLogo from "../assets/MLSC-logo.png";
 import "../App.css";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-export default function Login({ onSwitchView }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+import AuthForm from "../components/AuthForm";
+import useFormFields from "../hooks/useFormFields";
+import { login } from "../lib/api";
 
-  const handleSubmit = (e) => {
+export default function Login({ onLoginSuccess }) {
+  const navigate = useNavigate();
+
+  const [values, handleChange] = useFormFields({
+    email: "",
+    password: "",
+  });
+
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Login email:", email);
-    console.log("Login password:", password);
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await login({
+        email: values.email.trim(),
+        password: values.password.trim(),
+      });
+
+      onLoginSuccess?.(response);
+      navigate(response.redirectTo || "/dashboard", { replace: true });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <main className="auth-page auth-page--compact">
-      <section className="auth-panel" aria-labelledby="login-title">
-        <div className="panel-header">
-          <img className="panel-logo" src={MLSCLogo} alt="MLSC logo" />
-          <h2 id="login-title">Log in</h2>
-          <p className="panel-copy">
-            Welcome back. Use your registered credentials to continue.
-          </p>
-        </div>
-
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="login-email">Email</label>
-            <input
-              id="login-email"
-              type="email"
-              placeholder="Enter your email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-
-          <button type="submit" className="primary-button">
-            Log in
-          </button>
-        </form>
-
-        <div className="panel-footer">
-          <span>Need an account?</span>
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => onSwitchView?.("signup")}
-          >
-            Sign up
-          </button>
-        </div>
-      </section>
-    </main>
+    <AuthForm
+      mode="login"
+      values={values}
+      error={error}
+      loading={loading}
+      onChange={handleChange}
+      onSubmit={handleSubmit}
+      footerText="Need an account?"
+      footerAction={() => navigate("/signup")}
+    />
   );
 }

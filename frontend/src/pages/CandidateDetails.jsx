@@ -1,190 +1,210 @@
-import { useState } from "react";
-import MLSCLogo from "../assets/MLSC-logo.png";
+import { useEffect, useState } from "react";
 import "../App.css";
+import AuthPanel from "../components/AuthPanel";
+import FormField from "../components/FormField";
+import { saveCandidateDetails } from "../lib/api";
+import useFormFields from "../hooks/useFormFields";
 
-export default function CandidateDetails({ registrationData, onBackToSignup }) {
-  const [applicationNumber, setApplicationNumber] = useState("");
-  const [email, setEmail] = useState(registrationData?.email ?? "");
-  const [name, setName] = useState("");
-  const [dob, setDob] = useState("");
-  const [attendance, setAttendance] = useState("");
-  const [joinReason, setJoinReason] = useState("");
-  const [primaryDepartment, setPrimaryDepartment] = useState("");
-  const [secondaryDepartment, setSecondaryDepartment] = useState("");
-  const [otherSocieties, setOtherSocieties] = useState("");
-  const [recruitReason, setRecruitReason] = useState("");
+const initialDetails = {
+  applicationNumber: "",
+  email: "",
+  name: "",
+  dob: "",
+  attendance: "",
+  joinReason: "",
+  primaryDepartment: "",
+  secondaryDepartment: "",
+  otherSocieties: "",
+  recruitReason: "",
+};
 
-  const handleSubmit = (e) => {
+const profileMap = {
+  applicationNumber: "application_number",
+  name: "full_name",
+  dob: "date_of_birth",
+  attendance: "attendance",
+  joinReason: "join_reason",
+  primaryDepartment: "primary_department",
+  secondaryDepartment: "secondary_department",
+  otherSocieties: "other_societies",
+  recruitReason: "recruit_reason",
+};
+
+const attendanceOptions = [
+  ["", "Select one option"],
+  ["only-soc-fair", "Only Society fair"],
+  ["only-tech-meet", "Only Tech meet"],
+  ["both", "Both"],
+  ["none", "None"],
+].map(([value, label]) => ({ value, label }));
+
+const topFields = [
+  ["candidate-name", "name", "Name", "text", "Enter your full name"],
+  ["candidate-email", "email", "Email", "email", "Enter email address"],
+  [
+    "application-number",
+    "applicationNumber",
+    "Application Number",
+    "text",
+    "Enter application number",
+  ],
+  ["dob", "dob", "Date of Birth", "date"],
+  [
+    "attendance",
+    "attendance",
+    "Did you attended the Tech meet and Society fair?",
+    "select",
+  ],
+];
+
+const departmentFields = [
+  [
+    "primary-department",
+    "primaryDepartment",
+    "Your Primary Department",
+    "text",
+    "Enter primary department",
+  ],
+  [
+    "secondary-department",
+    "secondaryDepartment",
+    "Your Secondary Department",
+    "text",
+    "Enter secondary department",
+  ],
+];
+
+export default function CandidateDetails({
+  registrationData,
+  onBackToSignup,
+  onSaved,
+}) {
+  const [values, handleChange, setValues] = useFormFields(initialDetails);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setValues({
+      ...initialDetails,
+      email: registrationData?.email ?? "",
+      ...Object.fromEntries(
+        Object.entries(profileMap).map(([key, profileKey]) => [
+          key,
+          registrationData?.[profileKey] ?? "",
+        ]),
+      ),
+    });
+  }, [registrationData, setValues]);
+
+  const renderField = ([id, name, label, type, placeholder]) => (
+    <FormField
+      id={id}
+      key={id}
+      label={label}
+      name={name}
+      onChange={handleChange}
+      options={type === "select" ? attendanceOptions : undefined}
+      placeholder={placeholder}
+      required
+      type={type === "select" ? undefined : type}
+      value={values[name]}
+    />
+  );
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    console.log("Candidate details:", {
-      applicationNumber,
-      email,
-      name,
-      dob,
-      attendance,
-      joinReason,
-      primaryDepartment,
-      secondaryDepartment,
-      otherSocieties,
-      recruitReason,
-    });
+    setLoading(true);
+    setError("");
+    setStatus("");
+
+    const token = registrationData?.accessToken;
+
+    if (!token) {
+      setLoading(false);
+      setError("Please log in again before saving candidate details.");
+      return;
+    }
+
+    try {
+      const response = await saveCandidateDetails(
+        values,
+        token,
+      );
+
+      setStatus(response.message || "Candidate details saved.");
+      onSaved?.(response);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <main className="auth-page candidate-page">
-      <section
-        className="auth-panel candidate-panel"
-        aria-labelledby="candidate-title"
-      >
-        <div className="panel-header">
-          <img className="panel-logo" src={MLSCLogo} alt="MLSC logo" />
-          <h2 id="candidate-title">Candidate details</h2>
-          <p className="panel-copy">
-            Complete the profile information needed for the recruitment process.
-          </p>
+    <AuthPanel
+      className="candidate-panel"
+      copy="Complete the profile information needed for the recruitment process."
+      id="candidate-title"
+      pageClass="candidate-page"
+      title="Candidate details"
+    >
+      <form className="auth-form candidate-form" onSubmit={handleSubmit}>
+        <div className="details-grid">{topFields.map(renderField)}</div>
+
+        <FormField
+          as="textarea"
+          id="join-reason"
+          label="Why do you want to join MLSC?"
+          name="joinReason"
+          onChange={handleChange}
+          placeholder="Write your reason"
+          required
+          rows="4"
+          value={values.joinReason}
+        />
+
+        <div className="details-grid">{departmentFields.map(renderField)}</div>
+
+        <FormField
+          id="other-societies"
+          label="Which other Societies you are currently in Thapar except MLSC?"
+          name="otherSocieties"
+          onChange={handleChange}
+          placeholder="List other societies"
+          required
+          rows="3"
+          value={values.otherSocieties}
+        />
+
+        <FormField
+          as="textarea"
+          id="recruit-reason"
+          label="Why should we recruit you?"
+          name="recruitReason"
+          onChange={handleChange}
+          placeholder="Share why you are a strong fit"
+          required
+          rows="4"
+          value={values.recruitReason}
+        />
+
+        <div className="form-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onBackToSignup}
+          >
+            Back to signup
+          </button>
+          <button type="submit" className="primary-button" disabled={loading}>
+            {loading ? "Saving..." : "Save candidate details"}
+          </button>
         </div>
-
-        <form className="auth-form candidate-form" onSubmit={handleSubmit}>
-          <div className="details-grid">
-            <div className="form-group">
-              <label htmlFor="candidate-name">Name</label>
-              <input
-                id="candidate-name"
-                type="text"
-                placeholder="Enter your full name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="candidate-email">Email</label>
-              <input
-                id="candidate-email"
-                type="email"
-                placeholder="Enter email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="application-number">Application Number</label>
-              <input
-                id="application-number"
-                type="text"
-                placeholder="Enter application number"
-                value={applicationNumber}
-                onChange={(e) => setApplicationNumber(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="dob">Date of Birth</label>
-              <input
-                id="dob"
-                type="date"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="attendance">
-                Did you attended the Tech meet and Society fair?
-              </label>
-              <select
-                id="attendance"
-                value={attendance}
-                onChange={(e) => setAttendance(e.target.value)}
-              >
-                <option value="">Select one option</option>
-                <option value="only-soc-fair">Only Society fair</option>
-                <option value="only-tech-meet">Only Tech meet</option>
-                <option value="both">Both</option>
-                <option value="none">None</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="join-reason">Why do you want to join MLSC?</label>
-            <textarea
-              id="join-reason"
-              rows="4"
-              placeholder="Write your reason"
-              value={joinReason}
-              onChange={(e) => setJoinReason(e.target.value)}
-            />
-          </div>
-
-          <div className="details-grid">
-            <div className="form-group">
-              <label htmlFor="primary-department">
-                Your Primary Department
-              </label>
-              <input
-                id="primary-department"
-                type="text"
-                placeholder="Enter primary department"
-                value={primaryDepartment}
-                onChange={(e) => setPrimaryDepartment(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="secondary-department">
-                Your Secondary Department
-              </label>
-              <input
-                id="secondary-department"
-                type="text"
-                placeholder="Enter secondary department"
-                value={secondaryDepartment}
-                onChange={(e) => setSecondaryDepartment(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="other-societies">
-              Which other Societies you are currently in Thapar except MLSC?
-            </label>
-            <input
-              id="other-societies"
-              rows="3"
-              placeholder="List other societies"
-              value={otherSocieties}
-              onChange={(e) => setOtherSocieties(e.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="recruit-reason">Why should we recruit you?</label>
-            <textarea
-              id="recruit-reason"
-              rows="4"
-              placeholder="Share why you are a strong fit"
-              value={recruitReason}
-              onChange={(e) => setRecruitReason(e.target.value)}
-            />
-          </div>
-
-          <div className="form-actions">
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={onBackToSignup}
-            >
-              Back to signup
-            </button>
-            <button type="submit" className="primary-button">
-              Save candidate details
-            </button>
-          </div>
-        </form>
-      </section>
-    </main>
+        {error ? <p className="form-error">{error}</p> : null}
+        {status ? <p className="form-success">{status}</p> : null}
+      </form>
+    </AuthPanel>
   );
 }
