@@ -32,29 +32,43 @@ export default function AttendanceScanner({ onClose }) {
     isScanningRef.current = true;
 
     try {
-      const scanner = new Html5Qrcode("qr-reader");
+      const scanner = new Html5Qrcode("qr-reader", { verbose: false });
       scannerRef.current = scanner;
 
       await scanner.start(
         { facingMode: "environment" },
         {
-          fps: 10,
-          qrbox: (w, h) => {
-            const size = Math.max(50, Math.floor(Math.min(w, h) * 0.7));
-            return { width: size, height: size };
-          },
+          fps: 15,
+          qrbox: { width: 250, height: 250 },
           aspectRatio: 1.0,
           disableFlip: false,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         },
         (decodedText) => handleScan(decodedText),
+        () => {}, // suppress per-frame "not found" errors
       );
-    } catch (error) {
-      isScanningRef.current = false;
-      setResult({
-        type: "error",
-        title: "Camera Error",
-        message: error.message,
-      });
+    } catch (err) {
+      // fallback: try front camera if environment camera fails
+      try {
+        await scannerRef.current.start(
+          { facingMode: "user" },
+          {
+            fps: 15,
+            qrbox: { width: 250, height: 250 },
+            disableFlip: false,
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          },
+          (decodedText) => handleScan(decodedText),
+          () => {},
+        );
+      } catch (fallbackErr) {
+        isScanningRef.current = false;
+        setResult({
+          type: "error",
+          title: "Camera Error",
+          message: fallbackErr.message || err.message,
+        });
+      }
     }
   }
 
@@ -69,27 +83,14 @@ export default function AttendanceScanner({ onClose }) {
     }
     scannerRef.current = null;
 
-    // Force-kill every active camera track — html5-qrcode doesn't
-    // always release the MediaStream, so the browser keeps the camera
-    // indicator on even after .stop(). This is the only reliable fix.
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      if (devices) {
-        const streams = document.querySelectorAll("video");
-        streams.forEach((video) => {
-          const stream = video.srcObject;
-          if (stream instanceof MediaStream) {
-            stream.getTracks().forEach((track) => track.stop());
-            video.srcObject = null;
-          }
-        });
+    // Release any lingering camera tracks
+    document.querySelectorAll("video").forEach((video) => {
+      const stream = video.srcObject;
+      if (stream instanceof MediaStream) {
+        stream.getTracks().forEach((track) => track.stop());
+        video.srcObject = null;
       }
-    } catch {
-      // enumerateDevices not available — fall back to grabbing all tracks
-    }
-
-    // Final fallback: stop any lingering tracks via getUserMedia constraints
-    navigator.mediaDevices?.getUserMedia({ video: false }).catch(() => {});
+    });
   }
 
   async function handleClose() {
@@ -103,9 +104,6 @@ export default function AttendanceScanner({ onClose }) {
 
     lastScanRef.current = decodedText;
     clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      lastScanRef.current = "";
-    }, 3000);
 
     isSubmittingRef.current = true;
     try {
@@ -136,24 +134,39 @@ export default function AttendanceScanner({ onClose }) {
         addHistory("Present", candidate.full_name);
       }
     } catch (error) {
+      // Clear lastScanRef immediately on error so the same QR can be retried
+      lastScanRef.current = "";
       errorSoundRef.current.currentTime = 0;
       errorSoundRef.current.play().catch(() => {});
       const msg = error.message || "Attendance update failed.";
+      const isNotYet =
+        msg.toLowerCase().includes("not valid yet") ||
+        msg.toLowerCase().includes("unlocks");
       const isInvalidQr =
         msg.toLowerCase().includes("not found") ||
         msg.toLowerCase().includes("invalid") ||
         msg.toLowerCase().includes("unrecognized");
-      setResult({ type: "error", title: "Scan Failed", message: msg });
+      setResult({
+        type: "error",
+        title: isNotYet ? "Too Early" : "Scan Failed",
+        message: msg,
+      });
       addToast(
         "error",
-        isInvalidQr
-          ? "Invalid QR code — not a registered candidate."
-          : `Error: ${msg}`,
+        isNotYet
+          ? `⏰ ${msg}`
+          : isInvalidQr
+            ? "Invalid QR code — not a registered candidate."
+            : `Error: ${msg}`,
       );
       addHistory("Failed", decodedText);
     } finally {
       setTimeout(() => {
         isSubmittingRef.current = false;
+        // Allow re-scan of same code after 3s (success/warning path)
+        timeoutRef.current = setTimeout(() => {
+          lastScanRef.current = "";
+        }, 3000);
       }, 1000);
     }
   }
@@ -179,8 +192,6 @@ export default function AttendanceScanner({ onClose }) {
   function dismissToast(id) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
-
-  // ── effects AFTER all functions ──
 
   useEffect(() => {
     successSoundRef.current.load();
@@ -240,6 +251,7 @@ export default function AttendanceScanner({ onClose }) {
           ×
         </button>
 
+        {/* QR reader is always in the DOM — never hidden or conditionally rendered */}
         <div className="scanner-main">
           <h2>Attendance Scanner</h2>
           <div id="qr-reader" />

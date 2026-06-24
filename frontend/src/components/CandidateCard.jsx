@@ -1,3 +1,5 @@
+import { formatSlotSummary } from "../utils/slotResolver";
+
 const STATUS_CLASS = {
   pending: "status--pending",
   shortlisted: "status--shortlisted",
@@ -14,7 +16,12 @@ const DEPT_CLASS = {
   Media: "tag--media",
 };
 
-export default function CandidateCard({ candidate, onSelect }) {
+export default function CandidateCard({
+  candidate,
+  onSelect,
+  slotSummary,
+  slotSchedules,
+}) {
   const initials = candidate.full_name
     ?.split(" ")
     .map((w) => w[0])
@@ -22,6 +29,11 @@ export default function CandidateCard({ candidate, onSelect }) {
     .slice(0, 2);
 
   const statusKey = candidate.application_status?.toLowerCase();
+  const slotLabel = formatSlotSummary(
+    candidate.slot_id,
+    slotSummary,
+    slotSchedules,
+  );
 
   return (
     <div
@@ -63,7 +75,7 @@ export default function CandidateCard({ candidate, onSelect }) {
         )}
       </div>
 
-      {/* Footer: app number */}
+      {/* Footer: app number + slot badge */}
       <div className="card-footer">
         <span className="card-app-no">
           <svg
@@ -83,6 +95,25 @@ export default function CandidateCard({ candidate, onSelect }) {
           </svg>
           #{candidate.application_number}
         </span>
+        {slotLabel && (
+          <span className="card-slot-badge">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            {slotLabel}
+          </span>
+        )}
         <span className="card-cta" aria-hidden="true">
           View details →
         </span>

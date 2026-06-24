@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
+import {
+  resolveSlot,
+  formatSlotDate,
+  formatSlotTime,
+} from "../utils/slotResolver";
 
 export default function CandidateDrawer({
   candidate,
   globalLocked,
+  slotSummary,
+  slotSchedules,
   onClose,
   onUpdateStatus,
   onUpdateAttendance,
@@ -33,6 +40,11 @@ export default function CandidateDrawer({
   const isPresent = candidate.quiz_attended === true;
   const isLocked = candidate.form_locked === true;
   const isIndividuallyUnlocked = candidate.individual_unlock === true;
+  const resolvedSlot = resolveSlot(
+    candidate.slot_id,
+    slotSummary,
+    slotSchedules,
+  );
 
   function confirmAction(config, action) {
     setDialog({ ...config, _action: action });
@@ -373,6 +385,37 @@ export default function CandidateDrawer({
                 {candidate.application_status}
               </p>
             </div>
+
+            {/* ── Assigned Slot ── */}
+            {resolvedSlot ? (
+              <div className="detail-item detail-item--slot">
+                <h4>Assigned Slot</h4>
+                <p className="slot-pill">
+                  {(() => {
+                    const dateLabel = formatSlotDate(resolvedSlot.slotDate);
+                    const timeLabel = formatSlotTime(resolvedSlot.startTime);
+                    if (dateLabel) {
+                      return (
+                        <>
+                          <span className="slot-pill-id">{dateLabel}</span>
+                          {[timeLabel, resolvedSlot.venue]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </>
+                      );
+                    }
+                    // Admin hasn't set a calendar date/time yet — fall back
+                    // to the day/slot-number scheme so it's never blank.
+                    return `Day ${resolvedSlot.day} · Slot ${resolvedSlot.num} · ${resolvedSlot.venue}`;
+                  })()}
+                </p>
+              </div>
+            ) : (
+              <div className="detail-item detail-item--slot">
+                <h4>Assigned Slot</h4>
+                <p className="slot-pill slot-pill--none">Not assigned yet</p>
+              </div>
+            )}
 
             <div className="detail-item">
               <h4>Primary Department</h4>

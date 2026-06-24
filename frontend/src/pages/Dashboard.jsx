@@ -1,19 +1,168 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { updateCandidateDetails } from "../lib/api";
+import { updateCandidateDetails, getSlotSchedules } from "../lib/api";
 import mlscLogo from "../assets/MLSC-logo.png";
 import "./CandidateDashboard.css";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+const apiBaseUrl = (
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"
+).replace(/\/$/, "");
 
-const TEST_SCHEDULE = {
-  date: "15 September 2026",
-  time: "6:15 PM – 6:30 PM",
-  venue: "LP 105",
-};
+function useSlotInfo(slotId) {
+  const [slotInfo, setSlotInfo] = useState(undefined); // undefined = loading
 
-const SUPPORT = { email: "mlsc@thapar.edu", phone: "+91 9876543210" };
+  useEffect(() => {
+    if (!slotId) {
+      setSlotInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function resolve() {
+      try {
+        // Fetch the matching slot row directly from Supabase REST via the backend
+        // The public.slots table has RLS "select = true" so we can hit it via
+        // the /api/admin/slots/summary endpoint which already returns all rows.
+        const [summaryRes, schedulesRes] = await Promise.all([
+          fetch(`${apiBaseUrl}/api/admin/slots/summary`),
+          fetch(`${apiBaseUrl}/api/admin/slots/schedules`),
+        ]);
+
+        if (!summaryRes.ok) throw new Error("Failed to load slots");
+        const summary = await summaryRes.json();
+        const schedules = schedulesRes.ok
+          ? await schedulesRes.json()
+          : { days: [], times: [] };
+
+        if (cancelled) return;
+
+        const row = summary.find((s) => s.id === slotId);
+        if (!row) {
+          setSlotInfo(null);
+          return;
+        }
+
+        // Find configured date for this day
+        const dayRow = (schedules.days || []).find(
+          (d) => d.day_number === row.slot_day,
+        );
+        const timeRow = (schedules.times || []).find(
+          (t) => t.slot_number === row.slot_number,
+        );
+
+        setSlotInfo({
+          day: row.slot_day,
+          num: row.slot_number,
+          venue: row.slot_venue,
+          slotDate: dayRow?.slot_date ?? null, // "YYYY-MM-DD" or null
+          startTime: timeRow?.start_time ?? null, // "HH:MM:SS" or null
+        });
+      } catch (err) {
+        console.error("Failed to resolve slot info:", err);
+        if (!cancelled) setSlotInfo(null);
+      }
+    }
+
+    resolve();
+    return () => {
+      cancelled = true;
+    };
+  }, [slotId]);
+
+  return slotInfo; // undefined = still loading, null = no slot / not found
+}
+
+function formatSlotDate(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatSlotTime(timeStr) {
+  if (!timeStr) return null;
+  const [hh, mm] = timeStr.split(":");
+  const h = Number(hh);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${mm} ${ampm}`;
+}
+
+// ─── QR validity window ────────────────────────────────────────────────────────
+// The candidate's QR code becomes valid starting 30 minutes before their
+// allotted slot's scheduled date/time, and stays valid from that point on
+// (it never needs to "expire" on the client — attendance is single-use on
+// the server once scanned).
+
+const QR_UNLOCK_MINUTES_BEFORE = 30;
+
+// Builds a real Date from the admin-configured slot date + start time.
+// Returns null if either piece hasn't been configured yet.
+function getSlotDateTime(slotInfo) {
+  if (!slotInfo?.slotDate || !slotInfo?.startTime) return null;
+  const dt = new Date(`${slotInfo.slotDate}T${slotInfo.startTime}`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+// Recomputes on an interval so the UI flips from "locked" to "active"
+// automatically as the unlock time arrives, without needing a refresh.
+function useQrUnlockState(slotInfo) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const slotDateTime = getSlotDateTime(slotInfo);
+  if (!slotDateTime) {
+    // No configured date/time yet — nothing to gate against.
+    return { status: "unscheduled", unlockAt: null, slotDateTime: null };
+  }
+
+  const unlockAt = new Date(
+    slotDateTime.getTime() - QR_UNLOCK_MINUTES_BEFORE * 60_000,
+  );
+
+  return {
+    status: now >= unlockAt ? "active" : "locked",
+    unlockAt,
+    slotDateTime,
+  };
+}
+
+function formatClockTime(date) {
+  return date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function isSameDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function formatUnlockMoment(date) {
+  const time = formatClockTime(date);
+  if (isSameDay(date, new Date())) return time;
+  const day = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  return `${day}, ${time}`;
+}
+
+const SUPPORT = { email: "mlsc@thapar.edu", phone: "+91 9720257315" };
 
 const FAQS = [
   {
@@ -22,7 +171,7 @@ const FAQS = [
   },
   {
     q: "Can I change my department preference?",
-    a: "You can edit your details using the Edit Details button before the form is locked by an admin.",
+    a: "You can edit your details using the Edit Details button before the deadline.",
   },
   {
     q: "What should I bring for the test?",
@@ -34,7 +183,7 @@ const FAQS = [
   },
   {
     q: "Can I edit my application after submission?",
-    a: "You may update your details via Edit Details as long as the admin has not locked your form.",
+    a: "You may update your details via Edit Details until the deadline.",
   },
   {
     q: "Whom should I contact for technical issues?",
@@ -99,40 +248,58 @@ function ToastStack({ toasts, dismiss }) {
   );
 }
 
-// ─── QR Code card ─────────────────────────────────────────────────────────────
+function QRCardHeader() {
+  return (
+    <div className="cd-card-header">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="3" width="5" height="5" rx="1" />
+        <rect x="16" y="3" width="5" height="5" rx="1" />
+        <rect x="3" y="16" width="5" height="5" rx="1" />
+        <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
+        <path d="M21 21v.01" />
+        <path d="M12 7v3a2 2 0 0 1-2 2H7" />
+        <path d="M3 12h.01" />
+        <path d="M12 3h.01" />
+        <path d="M12 16v.01" />
+        <path d="M16 12h1" />
+      </svg>
+      <h3>Your Entry QR Code</h3>
+    </div>
+  );
+}
 
-function QRCard({ qrToken }) {
+function QRCard({ qrToken, slotInfo }) {
   const [enlarged, setEnlarged] = useState(false);
+  const { status, unlockAt, slotDateTime } = useQrUnlockState(slotInfo);
+
   if (!qrToken) return null;
 
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrToken)}&bgcolor=ffffff&color=08284d&margin=12`;
   const qrUrlLarge = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrToken)}&bgcolor=ffffff&color=08284d&margin=16`;
 
+  // Build the early-scan warning banner text when slot is scheduled but not yet within 30 min
+  let earlyBanner = null;
+  if (status === "locked" && unlockAt && slotDateTime) {
+    const slotDateStr = formatSlotDate(slotInfo?.slotDate);
+    const slotTimeStr = formatSlotTime(slotInfo?.startTime);
+    earlyBanner = {
+      slotLabel: [slotDateStr, slotTimeStr].filter(Boolean).join(" at "),
+      unlockLabel: formatUnlockMoment(unlockAt),
+    };
+  }
+
   return (
     <>
       <div className="cd-card">
-        <div className="cd-card-header">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="3" width="5" height="5" rx="1" />
-            <rect x="16" y="3" width="5" height="5" rx="1" />
-            <rect x="3" y="16" width="5" height="5" rx="1" />
-            <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
-            <path d="M21 21v.01" />
-            <path d="M12 7v3a2 2 0 0 1-2 2H7" />
-            <path d="M3 12h.01" />
-            <path d="M12 3h.01" />
-            <path d="M12 16v.01" />
-            <path d="M16 12h1" />
-          </svg>
-          <h3>Your Entry QR Code</h3>
-        </div>
+        <QRCardHeader />
         <div className="cd-qr-body">
+          {/* QR is ALWAYS visible — never hidden */}
           <button
             className="cd-qr-wrap cd-qr-wrap--clickable"
             onClick={() => setEnlarged(true)}
@@ -148,10 +315,61 @@ function QRCard({ qrToken }) {
             />
           </button>
           <div className="cd-qr-info">
-            <p className="cd-qr-hint">
-              Show this QR code at the venue to mark your attendance. Keep this
-              screen visible or take a screenshot before the test.
-            </p>
+            {/* Early-scan warning — shown when slot is set but window hasn't opened */}
+            {earlyBanner ? (
+              <div className="cd-qr-early-warning">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                <div>
+                  <strong>
+                    Your slot is scheduled for {earlyBanner.slotLabel}
+                  </strong>
+                  <p>
+                    This QR code will only be accepted from{" "}
+                    <strong>{earlyBanner.unlockLabel}</strong> onwards —
+                    {QR_UNLOCK_MINUTES_BEFORE} minutes before your slot.
+                    Scanning it earlier will not mark attendance.
+                  </p>
+                </div>
+              </div>
+            ) : status === "unscheduled" ? (
+              <div className="cd-qr-early-warning cd-qr-early-warning--info">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <div>
+                  <strong>Slot date &amp; time not yet configured</strong>
+                  <p>
+                    The admin hasn't set a date and time for your slot yet. Your
+                    QR code is ready — you'll be able to use it once the
+                    schedule is confirmed.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="cd-qr-hint">
+                Show this QR code at the venue to mark your attendance. Keep
+                this screen visible or take a screenshot before the test.
+              </p>
+            )}
             <p className="cd-qr-tap-hint">Tap the QR code to enlarge it.</p>
           </div>
         </div>
@@ -177,6 +395,25 @@ function QRCard({ qrToken }) {
               </button>
             </div>
             <div className="cd-qr-modal-body">
+              {earlyBanner && (
+                <div className="cd-qr-early-warning cd-qr-early-warning--modal">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <div>
+                    <strong>Slot: {earlyBanner.slotLabel}</strong>
+                    <p>Accepted from {earlyBanner.unlockLabel} onwards.</p>
+                  </div>
+                </div>
+              )}
               <img
                 src={qrUrlLarge}
                 alt="Entry QR code enlarged"
@@ -492,6 +729,9 @@ export default function Dashboard() {
   const [showEdit, setShowEdit] = useState(false);
   const { toasts, push, dismiss } = useToasts();
 
+  // Resolve slot info (day, num, venue, date, time) from the UUID stored in profile
+  const slotInfo = useSlotInfo(profile.slot_id ?? null);
+
   // Fire success toast once on arrival from CandidateDetails, then clear state
   useEffect(() => {
     const msg = location.state?.successMessage;
@@ -556,7 +796,13 @@ export default function Dashboard() {
             <p className="cd-header-sub">Your application dashboard</p>
           </div>
         </div>
-        <button className="cd-btn cd-btn--danger-ghost" onClick={() => { logout(); navigate("/login"); }}>
+        <button
+          className="cd-btn cd-btn--danger-ghost"
+          onClick={() => {
+            logout();
+            navigate("/login");
+          }}
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -728,73 +974,153 @@ export default function Dashboard() {
       </div>
 
       {/* ── QR Code ── */}
-      <QRCard qrToken={profile.qr_token} />
+      <QRCard qrToken={profile.qr_token} slotInfo={slotInfo} />
 
-      {/* ── Test Schedule ── */}
-      <div className="cd-card">
-        <div className="cd-card-header">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          <h3>Test Schedule</h3>
-        </div>
+      {/* ── Slot Assignment ── */}
+      {(() => {
+        const sid = profile.slot_id;
 
-        <div className="cd-schedule-grid">
-          <div className="cd-schedule-item">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            <span className="cd-schedule-value">{TEST_SCHEDULE.date}</span>
-            <span className="cd-schedule-label">Date</span>
+        // No slot assigned yet
+        if (!sid) {
+          return (
+            <div className="cd-card">
+              <div className="cd-card-header">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <h3>Slot Assigned</h3>
+              </div>
+              <div className="cd-slot-pending">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                Slot not assigned yet. Check back after some time.
+              </div>
+            </div>
+          );
+        }
+
+        // Slot assigned but still resolving from server
+        if (slotInfo === undefined) {
+          return (
+            <div className="cd-card">
+              <div className="cd-card-header">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <h3>Your Assigned Slot</h3>
+              </div>
+              <div className="cd-slot-pending">Loading slot details…</div>
+            </div>
+          );
+        }
+
+        // Slot resolved
+        const dateLabel = formatSlotDate(slotInfo.slotDate);
+        const timeLabel = formatSlotTime(slotInfo.startTime);
+
+        return (
+          <div className="cd-card cd-card--slot">
+            <div className="cd-card-header">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <h3>Your Assigned Slot</h3>
+            </div>
+            <div className="cd-schedule-grid">
+              <div className="cd-schedule-item">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <span className="cd-schedule-value">Day {slotInfo.day}</span>
+                {dateLabel && (
+                  <span className="cd-schedule-sub">{dateLabel}</span>
+                )}
+                <span className="cd-schedule-label">Day</span>
+              </div>
+              <div className="cd-schedule-item">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                <span className="cd-schedule-value">Slot {slotInfo.num}</span>
+                {timeLabel && (
+                  <span className="cd-schedule-sub">{timeLabel}</span>
+                )}
+                <span className="cd-schedule-label">Slot</span>
+              </div>
+              <div className="cd-schedule-item">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <span className="cd-schedule-value">{slotInfo.venue}</span>
+                <span className="cd-schedule-label">Venue</span>
+              </div>
+            </div>
+            <p className="cd-slot-note">
+              Please arrive at the venue on time. Bring your college ID and show
+              the QR code above for attendance.
+            </p>
           </div>
-          <div className="cd-schedule-item">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span className="cd-schedule-value">{TEST_SCHEDULE.time}</span>
-            <span className="cd-schedule-label">Time Slot</span>
-          </div>
-          <div className="cd-schedule-item">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-              <circle cx="12" cy="10" r="3" />
-            </svg>
-            <span className="cd-schedule-value">{TEST_SCHEDULE.venue}</span>
-            <span className="cd-schedule-label">Venue</span>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ── FAQ ── */}
       <div className="cd-card">

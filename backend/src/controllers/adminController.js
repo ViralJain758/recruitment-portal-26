@@ -10,6 +10,16 @@ import {
   updateCandidateDetails,
   getGlobalLock,
   setGlobalLock,
+  distributeSlots,
+  getSlotSummary,
+  clearSlots,
+  getSlotSchedules,
+  setDayDate,
+  setSlotTime,
+  addDayToSchedule,
+  removeDayFromSchedule,
+  addSlotToSchedule,
+  removeSlotFromSchedule,
 } from "../services/adminService.js";
 import { bearerToken, userFromToken } from "../services/authService.js";
 
@@ -131,7 +141,7 @@ export async function lockCandidateForm(req, res) {
   }
 }
 
-// ── Individual unlock override (admin only, while global lock is active) ──
+// ── Individual unlock override ─────────────────────────────────────────────
 
 export async function individualUnlockCandidate(req, res) {
   try {
@@ -167,7 +177,9 @@ export async function getGlobalLockStatus(req, res) {
     return res.json({ locked });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Failed to get global lock status" });
+    return res
+      .status(500)
+      .json({ message: "Failed to get global lock status" });
   }
 }
 
@@ -183,7 +195,9 @@ export async function setGlobalLockStatus(req, res) {
     req.app.get("io")?.emit("global:lock", { locked });
 
     return res.json({
-      message: locked ? "Global form lock enabled" : "Global form lock disabled",
+      message: locked
+        ? "Global form lock enabled"
+        : "Global form lock disabled",
       locked,
     });
   } catch (error) {
@@ -215,5 +229,189 @@ export async function updateOwnDetails(req, res) {
     return res
       .status(status)
       .json({ message: error.message || "Failed to update details." });
+  }
+}
+
+export async function distributeSlotHandler(req, res) {
+  try {
+    const result = await distributeSlots();
+    req.app.get("io")?.emit("slots:distributed", result);
+    return res.json({ message: "Slots distributed successfully.", ...result });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to distribute slots." });
+  }
+}
+
+export async function getSlotSummaryHandler(req, res) {
+  try {
+    const summary = await getSlotSummary();
+    return res.json(summary);
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to fetch slot summary." });
+  }
+}
+
+export async function clearSlotsHandler(req, res) {
+  try {
+    await clearSlots();
+    req.app.get("io")?.emit("slots:cleared");
+    return res.json({ message: "All slots cleared." });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to clear slots." });
+  }
+}
+
+// ── Slot Schedules ─────────────────────────────────────────────────────────────
+
+export async function getSlotSchedulesHandler(req, res) {
+  try {
+    const schedules = await getSlotSchedules();
+    return res.json(schedules);
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to fetch slot schedules." });
+  }
+}
+
+export async function setDayDateHandler(req, res) {
+  try {
+    const dayNumber = Number(req.params.day);
+    if (!dayNumber || dayNumber < 1) {
+      return res
+        .status(400)
+        .json({ message: "day must be a positive integer" });
+    }
+
+    const { slot_date } = req.body; // "YYYY-MM-DD" or null/""
+    const result = await setDayDate(dayNumber, slot_date || null);
+    req.app
+      .get("io")
+      ?.emit("slots:schedules_updated", { type: "day", ...result });
+    return res.json({ message: "Day date updated.", ...result });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to update day date." });
+  }
+}
+
+export async function setSlotTimeHandler(req, res) {
+  try {
+    const slotNumber = Number(req.params.slot);
+    if (!slotNumber || slotNumber < 1) {
+      return res
+        .status(400)
+        .json({ message: "slot must be a positive integer" });
+    }
+
+    const { start_time } = req.body; // "HH:MM" or null/""
+    const result = await setSlotTime(slotNumber, start_time || null);
+    req.app
+      .get("io")
+      ?.emit("slots:schedules_updated", { type: "time", ...result });
+    return res.json({ message: "Slot time updated.", ...result });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to update slot time." });
+  }
+}
+
+export async function addDayHandler(req, res) {
+  try {
+    const { day_number } = req.body;
+    const dayNumber = Number(day_number);
+    if (!dayNumber || dayNumber < 1) {
+      return res
+        .status(400)
+        .json({ message: "day_number must be a positive integer" });
+    }
+    const result = await addDayToSchedule(dayNumber);
+    req.app
+      .get("io")
+      ?.emit("slots:schedules_updated", { type: "day_added", dayNumber });
+    return res.json({ message: "Day added.", ...result });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to add day." });
+  }
+}
+
+export async function removeDayHandler(req, res) {
+  try {
+    const dayNumber = Number(req.params.day);
+    if (!dayNumber || dayNumber < 1) {
+      return res
+        .status(400)
+        .json({ message: "day must be a positive integer" });
+    }
+    await removeDayFromSchedule(dayNumber);
+    req.app
+      .get("io")
+      ?.emit("slots:schedules_updated", { type: "day_removed", dayNumber });
+    return res.json({ message: "Day removed." });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to remove day." });
+  }
+}
+
+export async function addSlotHandler(req, res) {
+  try {
+    const { slot_number } = req.body;
+    const slotNumber = Number(slot_number);
+    if (!slotNumber || slotNumber < 1) {
+      return res
+        .status(400)
+        .json({ message: "slot_number must be a positive integer" });
+    }
+    const result = await addSlotToSchedule(slotNumber);
+    req.app
+      .get("io")
+      ?.emit("slots:schedules_updated", { type: "slot_added", slotNumber });
+    return res.json({ message: "Slot added.", ...result });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to add slot." });
+  }
+}
+
+export async function removeSlotHandler(req, res) {
+  try {
+    const slotNumber = Number(req.params.slot);
+    if (!slotNumber || slotNumber < 1) {
+      return res
+        .status(400)
+        .json({ message: "slot must be a positive integer" });
+    }
+    await removeSlotFromSchedule(slotNumber);
+    req.app
+      .get("io")
+      ?.emit("slots:schedules_updated", { type: "slot_removed", slotNumber });
+    return res.json({ message: "Slot removed." });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to remove slot." });
   }
 }

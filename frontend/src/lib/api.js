@@ -51,7 +51,6 @@ export function saveCandidateDetails(payload, token) {
   });
 }
 
-// Candidate self-edit (all fields except password, blocked when form_locked)
 export function updateCandidateDetails(payload, token) {
   return request("/api/admin/candidate-details", {
     method: "PATCH",
@@ -78,7 +77,6 @@ export function updateCandidateAttendance(id, present) {
   });
 }
 
-// Toggle form lock — admin only
 export function lockCandidateForm(id, locked) {
   return request(`/api/admin/candidates/${id}/lock`, {
     method: "PATCH",
@@ -86,7 +84,6 @@ export function lockCandidateForm(id, locked) {
   });
 }
 
-// Individual unlock override — admin only, used when global lock is active
 export function individualUnlockCandidateForm(id, unlocked) {
   return request(`/api/admin/candidates/${id}/individual-unlock`, {
     method: "PATCH",
@@ -100,7 +97,6 @@ export function deleteCandidate(id) {
   });
 }
 
-// Global form lock — admin only
 export function getGlobalLock() {
   return request("/api/admin/global-lock");
 }
@@ -132,4 +128,62 @@ export function markAttendance(qrToken) {
 
 export function getAttendanceStats() {
   return request("/api/admin/attendance/stats");
+}
+
+// Slot distribution — admin only
+export function distributeSlots() {
+  return request("/api/admin/slots/distribute", { method: "POST" });
+}
+
+export function getSlotSummary() {
+  return request("/api/admin/slots/summary");
+}
+
+export function clearAllSlots() {
+  return request("/api/admin/slots", { method: "DELETE" });
+}
+
+// Slot schedules — admin only
+export function getSlotSchedules() {
+  return request("/api/admin/slots/schedules");
+}
+
+export function updateDayDate(dayNumber, slotDate) {
+  return request(`/api/admin/slots/schedules/day/${dayNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify({ slot_date: slotDate }),
+  });
+}
+
+export function updateSlotTime(slotNumber, startTime) {
+  return request(`/api/admin/slots/schedules/slot/${slotNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify({ start_time: startTime }),
+  });
+}
+
+export function addDay(dayNumber) {
+  return request("/api/admin/slots/schedules/day", {
+    method: "POST",
+    body: JSON.stringify({ day_number: dayNumber }),
+  });
+}
+
+export function removeDay(dayNumber) {
+  return request(`/api/admin/slots/schedules/day/${dayNumber}`, {
+    method: "DELETE",
+  });
+}
+
+export function addSlot(slotNumber) {
+  return request("/api/admin/slots/schedules/slot", {
+    method: "POST",
+    body: JSON.stringify({ slot_number: slotNumber }),
+  });
+}
+
+export function removeSlot(slotNumber) {
+  return request(`/api/admin/slots/schedules/slot/${slotNumber}`, {
+    method: "DELETE",
+  });
 }

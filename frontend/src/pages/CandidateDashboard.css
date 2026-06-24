@@ -1,8 +1,3 @@
-/* =====================
-   CANDIDATE DASHBOARD
-   Mirrors AdminDashboard.css design tokens
-   ===================== */
-
 .cd {
   max-width: 960px;
   margin: 0 auto;
@@ -180,6 +175,145 @@
   box-shadow: 0 4px 18px rgba(15, 64, 117, 0.07);
 }
 
+/* Highlighted slot card */
+.cd-card--slot {
+  border-color: #93c5fd;
+  box-shadow: 0 4px 24px rgba(37, 99, 235, 0.14);
+}
+
+.cd-card--slot .cd-card-header {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-bottom-color: #bfdbfe;
+}
+
+.cd-card--slot .cd-schedule-item {
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
+}
+
+.cd-card--slot .cd-schedule-value {
+  color: #1d4ed8;
+}
+
+.cd-slot-id-badge {
+  margin-left: auto;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  font-family: ui-monospace, Consolas, monospace;
+  padding: 2px 9px;
+  border-radius: 6px;
+  letter-spacing: 0.3px;
+}
+
+.cd-slot-note {
+  margin: 0;
+  padding: 10px 24px 18px;
+  font-size: 0.83rem;
+  color: #5a7896;
+  line-height: 1.55;
+}
+
+.cd-slot-pending {
+  padding: 16px 20px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #5a7896;
+  font-size: 0.88rem;
+}
+
+.cd-slot-pending svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  stroke: #94b3cc;
+}
+
+.cd-qr-early-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  color: #78350f;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+
+.cd-qr-early-warning svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  stroke: #d97706;
+  margin-top: 1px;
+}
+
+.cd-qr-early-warning strong {
+  display: block;
+  color: #92400e;
+  font-size: 0.87rem;
+  margin-bottom: 4px;
+}
+
+.cd-qr-early-warning p {
+  margin: 0;
+  color: #78350f;
+}
+
+.cd-qr-early-warning--info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e3a5f;
+}
+
+.cd-qr-early-warning--info svg {
+  stroke: #3b82f6;
+}
+
+.cd-qr-early-warning--info strong {
+  color: #1e40af;
+}
+
+.cd-qr-early-warning--info p {
+  color: #1e3a5f;
+}
+
+.cd-qr-early-warning--modal {
+  margin: 0 24px 16px;
+  font-size: 0.83rem;
+}
+
+.cd-qr-locked {
+  padding: 20px 24px 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: #5a7896;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.cd-qr-locked svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  stroke: #94b3cc;
+  margin-top: 1px;
+}
+
+.cd-qr-locked p {
+  margin: 0;
+}
+
+.cd-qr-locked strong {
+  color: #2a4a6b;
+}
+
 .cd-card-header {
   display: flex;
   align-items: center;
@@ -321,6 +455,14 @@
   color: #08284d;
   font-size: 1rem;
   font-weight: 700;
+}
+
+.cd-schedule-sub {
+  color: #2663e7;
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.3;
+  margin-top: -4px;
 }
 
 .cd-schedule-label {
