@@ -664,7 +664,10 @@ export default function SlotDistribution({
                               key={`${day}-${num}-${venue}`}
                               className={`slot-cell ${count === 0 ? "slot-cell--empty" : ""}`}
                               title={slotUuid ? `Slot UUID: ${slotUuid}` : ""}
+<<<<<<< HEAD
                               data-venue={venue}
+=======
+>>>>>>> 0041c9a (add slot distribution system)
                             >
                               <span className="slot-cell-id">
                                 {slotUuid ? shortUuid(slotUuid) + "…" : "—"}

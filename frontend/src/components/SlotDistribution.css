@@ -491,8 +491,11 @@
 }
 
 /* ── Responsive ── */
+<<<<<<< HEAD
 
 /* ── 700px: collapse schedule config to single column ── */
+=======
+>>>>>>> 0041c9a (add slot distribution system)
 @media (max-width: 700px) {
   .sched-config-body {
     grid-template-columns: 1fr;
@@ -504,11 +507,15 @@
   }
 }
 
+<<<<<<< HEAD
 /* ── 640px: slot panel header stacks, grid shrinks ── */
+=======
+>>>>>>> 0041c9a (add slot distribution system)
 @media (max-width: 640px) {
   .slot-panel-header {
     flex-direction: column;
     align-items: flex-start;
+<<<<<<< HEAD
     gap: 12px;
     padding: 16px 16px;
   }
@@ -532,10 +539,17 @@
 
   .slot-day-grid {
     grid-template-columns: 70px repeat(4, 1fr);
+=======
+  }
+
+  .slot-day-grid {
+    grid-template-columns: 80px repeat(4, 1fr);
+>>>>>>> 0041c9a (add slot distribution system)
     gap: 4px;
   }
 
   .slot-venue-header {
+<<<<<<< HEAD
     font-size: 0.64rem;
     padding: 5px 2px;
     letter-spacing: 0;
@@ -561,11 +575,21 @@
 
   .slot-cell-id {
     font-size: 0.52rem;
+=======
+    font-size: 0.68rem;
+    padding: 4px 2px;
+  }
+
+  .slot-cell {
+    min-height: 44px;
+    padding: 4px 2px;
+>>>>>>> 0041c9a (add slot distribution system)
   }
 
   .slot-cell-count {
     font-size: 1rem;
   }
+<<<<<<< HEAD
 
   .slot-cell-label {
     font-size: 0.58rem;
@@ -740,4 +764,6 @@
     width: 100%;
     justify-content: center;
   }
+=======
+>>>>>>> 0041c9a (add slot distribution system)
 }

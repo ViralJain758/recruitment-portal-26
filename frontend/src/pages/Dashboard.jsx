@@ -161,12 +161,15 @@ function formatUnlockMoment(date) {
   });
   return `${day}, ${time}`;
 }
+<<<<<<< HEAD
 
 const SUPPORT = {
   email: "msc@thapar.edu",
   phone: "+91 9720257315",
   phone2: "+91 9914589960",
 };
+=======
+>>>>>>> 0041c9a (add slot distribution system)
 
 const FAQS = [
   {
