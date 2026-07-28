@@ -1,5 +1,6 @@
 import { cleanText } from "../utils/text.js";
-import { verifyOTP, isEmailVerified } from "../models/otpModel.js";
+import { createOTP, verifyOTP, isEmailVerified } from "../models/otpModel.js";
+import { sendOTPEmail } from "../services/emailService.js";
 import { completeRegistration, getUserByEmail } from "../services/authService.js";
 
 export async function sendOTP(req, res) {

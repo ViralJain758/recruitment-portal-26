@@ -7,6 +7,7 @@ import {
   refreshUserSession,
   saveCandidate,
   userFromToken,
+  verifyAdminLoginOtp,
 } from "../services/authService.js";
 
 export async function signup(req, res) {
@@ -48,6 +49,24 @@ export async function login(req, res) {
   }
 
   const { data, error } = await loginUser(email, password);
+
+  return error
+    ? res.status(401).json({ message: error.message })
+    : res.json(data);
+}
+
+export async function verifyAdminOtp(req, res) {
+  const email = cleanText(req.body.email);
+  const password = cleanText(req.body.password);
+  const otp = cleanText(req.body.otp);
+
+  if (!email || !password || !otp) {
+    return res.status(400).json({
+      message: "Email, password, and OTP are required.",
+    });
+  }
+
+  const { data, error } = await verifyAdminLoginOtp(email, password, otp);
 
   return error
     ? res.status(401).json({ message: error.message })

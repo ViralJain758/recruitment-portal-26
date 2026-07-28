@@ -43,6 +43,13 @@ export function login(payload) {
   });
 }
 
+export function verifyAdminOtp(payload) {
+  return request("/api/auth/admin-verify-otp", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function refreshSession(payload) {
   return request("/api/auth/refresh", {
     method: "POST",

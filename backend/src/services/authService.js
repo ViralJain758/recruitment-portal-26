@@ -18,7 +18,7 @@ import {
   isEmailVerified,
 } from "../models/otpModel.js";
 
-import { sendOTPEmail } from "./emailService.js";
+import { sendAdminOTPEmail, sendOTPEmail } from "./emailService.js";
 import { getGlobalLock } from "./adminService.js";
 import  db  from "../config/db.js"; 
 
@@ -164,6 +164,7 @@ export async function completeRegistration(email, password) {
 export async function loginUser(email, password) {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  const adminOtpEmail = process.env.ADMIN_OTP_EMAIL?.trim();
 
   if (
     adminEmail &&
@@ -171,10 +172,21 @@ export async function loginUser(email, password) {
     email.toLowerCase() === adminEmail &&
     password === adminPassword
   ) {
+    if (!adminOtpEmail) {
+      return {
+        error: {
+          message: "Admin OTP receiver email is not configured.",
+        },
+      };
+    }
+
+    const { otp } = await createOTP(adminOtpEmail);
+    await sendAdminOTPEmail(adminOtpEmail, otp);
+
     return {
       data: {
-        isAdmin: true,
-        redirectTo: "/admin-dashboard",
+        requiresAdminOtp: true,
+        message: "Admin OTP sent.",
       },
     };
   }
@@ -196,6 +208,53 @@ export async function loginUser(email, password) {
 // ─────────────────────────────────────────────
 // Refresh Session
 // ─────────────────────────────────────────────
+export async function verifyAdminLoginOtp(email, password, otp) {
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  const adminOtpEmail = process.env.ADMIN_OTP_EMAIL?.trim();
+
+  if (!adminEmail || !adminPassword) {
+    return {
+      error: {
+        message: "Admin credentials are not configured.",
+      },
+    };
+  }
+
+  if (!adminOtpEmail) {
+    return {
+      error: {
+        message: "Admin OTP receiver email is not configured.",
+      },
+    };
+  }
+
+  if (email.toLowerCase() !== adminEmail || password !== adminPassword) {
+    return {
+      error: {
+        message: "Invalid email or password.",
+      },
+    };
+  }
+
+  const { success, error } = await verifyOTP(adminOtpEmail, otp);
+
+  if (!success) {
+    return {
+      error: {
+        message: error,
+      },
+    };
+  }
+
+  return {
+    data: {
+      isAdmin: true,
+      redirectTo: "/admin-dashboard",
+    },
+  };
+}
+
 export async function refreshUserSession(refreshToken) {
   const { data, error } = await refreshSession(refreshToken);
 
