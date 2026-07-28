@@ -22,6 +22,8 @@ import {
   removeSlotFromSchedule,
 } from "../services/adminService.js";
 import { bearerToken, userFromToken } from "../services/authService.js";
+import db from "../config/db.js";
+import { deleteUserById } from "../models/authModel.js";
 
 export async function getAllCandidates(req, res) {
   try {
@@ -73,13 +75,33 @@ export async function updateCandidateAttendance(req, res) {
   }
 }
 
+// ── FIX: Delete from users (not just candidate_profiles) so the email is
+//         fully freed and the person can re-register with the same address.
+//         ON DELETE CASCADE in the schema takes care of:
+//           refresh_tokens, candidate_profiles, candidate_form,
+//           candidate_status, candidate_quiz
 export async function deleteCandidateById(req, res) {
   try {
     const { id } = req.params;
 
-    await deleteCandidate(id);
-    req.app.get("io")?.emit("candidate:deleted", { id: Number(id) });
+    // Resolve the users.id from the candidate_profiles.id that the frontend sends
+    const cpResult = await db.execute({
+      sql: "SELECT user_id FROM candidate_profiles WHERE id = ?",
+      args: [Number(id)],
+    });
 
+    const row = cpResult.rows[0];
+    if (!row) {
+      return res.status(404).json({ message: "Candidate not found." });
+    }
+
+    // Single delete — cascade does the rest
+    const { error } = await deleteUserById(row.user_id);
+    if (error) {
+      return res.status(500).json({ message: error.message });
+    }
+
+    req.app.get("io")?.emit("candidate:deleted", { id: Number(id) });
     return res.json({ message: "Candidate deleted" });
   } catch (error) {
     console.error(error);
@@ -293,7 +315,7 @@ export async function setDayDateHandler(req, res) {
         .json({ message: "day must be a positive integer" });
     }
 
-    const { slot_date } = req.body; // "YYYY-MM-DD" or null/""
+    const { slot_date } = req.body;
     const result = await setDayDate(dayNumber, slot_date || null);
     req.app
       .get("io")
@@ -316,7 +338,7 @@ export async function setSlotTimeHandler(req, res) {
         .json({ message: "slot must be a positive integer" });
     }
 
-    const { start_time } = req.body; // "HH:MM" or null/""
+    const { start_time } = req.body;
     const result = await setSlotTime(slotNumber, start_time || null);
     req.app
       .get("io")

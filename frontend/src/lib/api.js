@@ -29,6 +29,13 @@ export function signup(payload) {
   });
 }
 
+export function verifySignupOtp(payload) {
+  return request("/api/otp/verify-and-complete", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function login(payload) {
   return request("/api/auth/login", {
     method: "POST",

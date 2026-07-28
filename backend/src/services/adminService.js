@@ -1,542 +1,421 @@
-import { supabaseAdmin } from "../config/supabase.js";
+import db from "../config/db.js";
+import { findAllCandidates, findCandidateById } from "../models/candidateModel.js";
+
+// ── Candidates ─────────────────────────────────────────────────────────────
 
 export async function fetchAllCandidates() {
-  const { data, error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) throw error;
-  return data;
+  return findAllCandidates();
 }
 
 export async function updateStatus(id, status) {
-  const { data, error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .update({ application_status: status })
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw error;
+  // id is candidate_profiles.id — candidate_status.candidate_id references it
+  await db.execute({
+    sql: `UPDATE candidate_status SET application_status = ?, updated_at = datetime('now')
+          WHERE candidate_id = ?`,
+    args: [status, id],
+  });
+  const { data } = await findCandidateById(id);
+  if (!data) throw new Error("Candidate not found.");
   return data;
 }
 
 export async function updateAttendance(id, present) {
-  const updatePayload = {
-    quiz_attended: present,
-    quiz_attended_at: present ? new Date().toISOString() : null,
-  };
-
-  const { data, error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .update(updatePayload)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw error;
+  // id is candidate_profiles.id
+  const attendedAt = present ? new Date().toISOString() : null;
+  await db.execute({
+    sql: `UPDATE candidate_quiz
+          SET quiz_attended = ?, quiz_attended_at = ?, updated_at = datetime('now')
+          WHERE candidate_id = ?`,
+    args: [present ? 1 : 0, attendedAt, id],
+  });
+  const { data } = await findCandidateById(id);
+  if (!data) throw new Error("Candidate not found.");
   return data;
 }
 
 export async function deleteCandidate(id) {
-  const { error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .delete()
-    .eq("id", id);
+  // FIX (Bug 1): Resolve the user_id first, then delete refresh_tokens explicitly
+  // before removing the user row. Although the schema has ON DELETE CASCADE on
+  // refresh_tokens.user_id, explicitly deleting them first guarantees the email
+  // is fully free for re-registration even if Turso's cascade has any lag.
+  // We use db.batch() so all statements run atomically.
 
-  if (error) throw error;
+  const cpRow = await db.execute({
+    sql: "SELECT user_id FROM candidate_profiles WHERE id = ?",
+    args: [id],
+  });
+
+  const userId = cpRow.rows[0]?.user_id;
+  if (!userId) throw new Error("Candidate not found.");
+
+  await db.batch(
+    [
+      // Explicitly revoke all refresh tokens so the deleted user cannot refresh
+      { sql: "DELETE FROM refresh_tokens WHERE user_id = ?", args: [userId] },
+      // Deleting from users cascades: candidate_profiles, candidate_form,
+      // candidate_status, candidate_quiz (all have ON DELETE CASCADE).
+      { sql: "DELETE FROM users WHERE id = ?", args: [userId] },
+    ],
+    "write",
+  );
 }
 
-// QR codes are only valid for scanning starting this many minutes before the
-// candidate's allotted slot. This mirrors the candidate dashboard's display
-// gating, but enforced here so it can't be bypassed by calling the
-// attendance endpoint directly.
+// ── QR Attendance ──────────────────────────────────────────────────────────
+
 const QR_UNLOCK_MINUTES_BEFORE = 30;
 
-async function resolveCandidateSlotDateTime(candidate) {
-  if (!candidate.slot_id) return null;
+async function resolveCandidateSlotDateTime(slotId) {
+  if (!slotId) return null;
 
-  const { data: slot, error: slotError } = await supabaseAdmin
-    .from("slots")
-    .select("slot_day, slot_number")
-    .eq("id", candidate.slot_id)
-    .maybeSingle();
+  const slotResult = await db.execute({
+    sql: "SELECT slot_day, slot_number FROM slots WHERE id = ?",
+    args: [slotId],
+  });
+  const slot = slotResult.rows[0];
+  if (!slot) return null;
 
-  if (slotError || !slot) return null;
-
-  const [{ data: dayRow }, { data: timeRow }] = await Promise.all([
-    supabaseAdmin
-      .from("slot_day_dates")
-      .select("slot_date")
-      .eq("day_number", slot.slot_day)
-      .maybeSingle(),
-    supabaseAdmin
-      .from("slot_time_schedules")
-      .select("start_time")
-      .eq("slot_number", slot.slot_number)
-      .maybeSingle(),
+  const [dayResult, timeResult] = await Promise.all([
+    db.execute({ sql: "SELECT slot_date FROM slot_day_dates WHERE day_number = ?", args: [slot.slot_day] }),
+    db.execute({ sql: "SELECT start_time FROM slot_time_schedules WHERE slot_number = ?", args: [slot.slot_number] }),
   ]);
 
-  if (!dayRow?.slot_date || !timeRow?.start_time) return null;
+  const slotDate = dayResult.rows[0]?.slot_date;
+  const startTime = timeResult.rows[0]?.start_time;
+  if (!slotDate || !startTime) return null;
 
-  const dt = new Date(`${dayRow.slot_date}T${timeRow.start_time}`);
+  // FIX: new Date("YYYY-MM-DDTHH:MM") with no timezone suffix is parsed as UTC
+  // by the JS engine. Slot times are entered in IST (UTC+5:30), so appending
+  // the IST offset makes the Date represent the correct instant in time.
+  // Without this, a 10:00 AM IST slot is treated as 10:00 AM UTC (3:30 PM IST),
+  // causing the unlock window check to fire ~5h30m too late.
+  const IST_OFFSET = "+05:30";
+  const dt = new Date(`${slotDate}T${startTime}${IST_OFFSET}`);
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
 export async function markQuizAttendance(qrToken) {
-  const { data: candidate, error: candidateError } = await supabaseAdmin
-    .from("candidate_profiles")
-    .select("*")
-    .eq("qr_token", qrToken)
-    .single();
+  const result = await db.execute({
+    sql: `SELECT cp.id, cq.quiz_attended, cs.slot_id
+          FROM candidate_quiz cq
+          JOIN candidate_profiles cp ON cp.id = cq.candidate_id
+          LEFT JOIN candidate_status cs ON cs.candidate_id = cp.id
+          WHERE cq.qr_token = ?`,
+    args: [qrToken],
+  });
 
-  if (candidateError || !candidate) {
-    throw new Error("Candidate not found");
+  const row = result.rows[0];
+  if (!row) throw new Error("Candidate not found");
+
+  if (row.quiz_attended) {
+    const { data } = await findCandidateById(row.id);
+    return { alreadyPresent: true, candidate: data };
   }
 
-  if (candidate.quiz_attended) {
-    return { alreadyPresent: true, candidate };
-  }
-
-  // Enforce the QR validity window: only scannable from 30 minutes before
-  // the candidate's allotted slot onward. If the admin hasn't configured a
-  // date/time for the slot yet, there's nothing to gate against, so allow it
-  // (matches the dashboard's "unscheduled" display state).
-  const slotDateTime = await resolveCandidateSlotDateTime(candidate);
+  const slotDateTime = await resolveCandidateSlotDateTime(row.slot_id);
   if (slotDateTime) {
-    const unlockAt = new Date(
-      slotDateTime.getTime() - QR_UNLOCK_MINUTES_BEFORE * 60_000,
-    );
+    const unlockAt = new Date(slotDateTime.getTime() - QR_UNLOCK_MINUTES_BEFORE * 60_000);
     if (new Date() < unlockAt) {
       throw new Error(
-        `This QR code is not valid yet. It unlocks ${QR_UNLOCK_MINUTES_BEFORE} minutes before the candidate's slot.`,
+        `This QR code is not valid yet. It unlocks ${QR_UNLOCK_MINUTES_BEFORE} minutes before the candidate's slot.`
       );
     }
   }
 
-  const { data: updatedCandidate, error: updateError } = await supabaseAdmin
-    .from("candidate_profiles")
-    .update({
-      quiz_attended: true,
-      quiz_attended_at: new Date().toISOString(),
-    })
-    .eq("id", candidate.id)
-    .select()
-    .single();
+  await db.execute({
+    sql: `UPDATE candidate_quiz
+          SET quiz_attended = 1, quiz_attended_at = ?, updated_at = datetime('now')
+          WHERE candidate_id = ?`,
+    args: [new Date().toISOString(), row.id],
+  });
 
-  if (updateError) throw updateError;
-
-  return { alreadyPresent: false, candidate: updatedCandidate };
+  const { data } = await findCandidateById(row.id);
+  return { alreadyPresent: false, candidate: data };
 }
 
 export async function getAttendanceStatsService() {
-  const { count: totalCandidates, error: totalError } = await supabaseAdmin
-    .from("candidate_profiles")
-    .select("*", { count: "exact", head: true });
-
-  if (totalError) throw totalError;
-
-  const { count: presentCandidates, error: presentError } = await supabaseAdmin
-    .from("candidate_profiles")
-    .select("*", { count: "exact", head: true })
-    .eq("quiz_attended", true);
-
-  if (presentError) throw presentError;
-
-  return { totalCandidates, presentCandidates };
+  const [total, present] = await Promise.all([
+    db.execute("SELECT COUNT(*) as count FROM candidate_profiles"),
+    db.execute("SELECT COUNT(*) as count FROM candidate_quiz WHERE quiz_attended = 1"),
+  ]);
+  return {
+    totalCandidates: Number(total.rows[0].count),
+    presentCandidates: Number(present.rows[0].count),
+  };
 }
 
 // ── Form lock ──────────────────────────────────────────────────────────────
 
 export async function toggleFormLock(id, locked) {
-  const { data, error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .update({ form_locked: locked, individual_unlock: false })
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw error;
+  // id is candidate_profiles.id
+  await db.execute({
+    sql: `UPDATE candidate_status
+          SET form_locked = ?, individual_unlock = 0, updated_at = datetime('now')
+          WHERE candidate_id = ?`,
+    args: [locked ? 1 : 0, id],
+  });
+  const { data } = await findCandidateById(id);
+  if (!data) throw new Error("Candidate not found.");
   return data;
 }
 
-// ── Individual unlock override (used when global lock is active) ───────────
-
 export async function setIndividualUnlock(id, unlocked) {
-  const updatePayload = unlocked
-    ? { individual_unlock: true, form_locked: false }
-    : { individual_unlock: false };
-
-  const { data, error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .update(updatePayload)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) throw error;
+  // id is candidate_profiles.id
+  const sql = unlocked
+    ? `UPDATE candidate_status SET individual_unlock = 1, form_locked = 0, updated_at = datetime('now') WHERE candidate_id = ?`
+    : `UPDATE candidate_status SET individual_unlock = 0, updated_at = datetime('now') WHERE candidate_id = ?`;
+  await db.execute({ sql, args: [id] });
+  const { data } = await findCandidateById(id);
+  if (!data) throw new Error("Candidate not found.");
   return data;
 }
 
 // ── Global form lock ───────────────────────────────────────────────────────
 
 export async function getGlobalLock() {
-  const { data, error } = await supabaseAdmin
-    .from("app_settings")
-    .select("value")
-    .eq("key", "global_form_locked")
-    .maybeSingle();
-
-  if (error) throw error;
-  return data?.value === "true";
+  const result = await db.execute({
+    sql: "SELECT value FROM app_settings WHERE key = 'global_form_locked'",
+    args: [],
+  });
+  return result.rows[0]?.value === "true";
 }
 
 export async function setGlobalLock(locked) {
-  const { error } = await supabaseAdmin
-    .from("app_settings")
-    .upsert(
-      { key: "global_form_locked", value: String(locked) },
-      { onConflict: "key" },
-    );
-
-  if (error) throw error;
+  await db.execute({
+    sql: `INSERT INTO app_settings (key, value) VALUES ('global_form_locked', ?)
+          ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+    args: [String(locked)],
+  });
   return locked;
 }
 
 // ── Candidate self-edit ────────────────────────────────────────────────────
 
-const EDITABLE_FIELDS = [
-  "full_name",
-  "date_of_birth",
-  "attendance",
-  "join_reason",
-  "primary_department",
-  "secondary_department",
-  "other_societies",
-  "recruit_reason",
+const PROFILE_FIELDS = ["full_name", "date_of_birth"];
+const FORM_FIELDS = [
+  "attendance", "join_reason", "primary_department",
+  "secondary_department", "other_societies", "recruit_reason",
 ];
 
 export async function updateCandidateDetails(userId, body) {
-  let existing = null;
-
-  const { data: profileData, error: fetchError } = await supabaseAdmin
-    .from("candidate_profiles")
-    .select("id, form_locked, individual_unlock")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (fetchError) {
-    const msg = (fetchError.message || "").toLowerCase();
-    const isColumnMissing =
-      msg.includes("individual_unlock") || fetchError.code === "42703";
-
-    if (!isColumnMissing) throw new Error("Failed to fetch candidate profile.");
-
-    const { data: fallback, error: fallbackError } = await supabaseAdmin
-      .from("candidate_profiles")
-      .select("id, form_locked")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (fallbackError) throw new Error("Failed to fetch candidate profile.");
-    existing = fallback ? { ...fallback, individual_unlock: false } : null;
-  } else {
-    existing = profileData;
-  }
-
+  const result = await db.execute({
+    sql: `SELECT cp.id, cs.form_locked, cs.individual_unlock
+          FROM candidate_profiles cp
+          LEFT JOIN candidate_status cs ON cs.candidate_id = cp.id
+          WHERE cp.user_id = ?`,
+    args: [userId],
+  });
+  const existing = result.rows[0];
   if (!existing) throw new Error("Candidate profile not found.");
 
   const globallyLocked = await getGlobalLock();
-  if (globallyLocked && !existing.individual_unlock)
-    throw new Error(
-      "Registrations are closed. No further changes can be made.",
-    );
+  if (globallyLocked && !existing.individual_unlock) {
+    throw new Error("Registrations are closed. No further changes can be made.");
+  }
+  if (existing.form_locked) {
+    throw new Error("Your form has been locked by the admin. No further changes can be made.");
+  }
 
-  if (existing.form_locked)
-    throw new Error(
-      "Your form has been locked by the admin. No further changes can be made.",
-    );
+  const profilePayload = {};
+  const formPayload = {};
 
-  const payload = {};
-  for (const field of EDITABLE_FIELDS) {
-    if (
-      body[field] !== undefined &&
-      body[field] !== null &&
-      String(body[field]).trim() !== ""
-    ) {
-      payload[field] = String(body[field]).trim();
+  for (const field of PROFILE_FIELDS) {
+    if (body[field] !== undefined && String(body[field]).trim() !== "") {
+      profilePayload[field] = String(body[field]).trim();
+    }
+  }
+  for (const field of FORM_FIELDS) {
+    if (body[field] !== undefined && String(body[field]).trim() !== "") {
+      formPayload[field] = String(body[field]).trim();
     }
   }
 
-  if (!Object.keys(payload).length) {
+  if (!Object.keys(profilePayload).length && !Object.keys(formPayload).length) {
     throw new Error("No valid fields provided for update.");
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .update(payload)
-    .eq("id", existing.id)
-    .select()
-    .single();
+  const stmts = [];
 
-  if (error) throw error;
+  if (Object.keys(profilePayload).length) {
+    const setClauses = Object.keys(profilePayload).map((k) => `${k} = ?`).join(", ");
+    stmts.push({
+      sql: `UPDATE candidate_profiles SET ${setClauses}, updated_at = datetime('now') WHERE id = ?`,
+      args: [...Object.values(profilePayload), existing.id],
+    });
+  }
+
+  if (Object.keys(formPayload).length) {
+    const setClauses = Object.keys(formPayload).map((k) => `${k} = ?`).join(", ");
+    stmts.push({
+      sql: `UPDATE candidate_form SET ${setClauses}, updated_at = datetime('now') WHERE candidate_id = ?`,
+      args: [...Object.values(formPayload), existing.id],
+    });
+  }
+
+  await db.batch(stmts, "write");
+
+  const { data } = await findCandidateById(existing.id);
   return data;
 }
 
-// ── Slot Distribution ──────────────────────────────────────────────────────────
-// slots.id is a UUID — fetched from the DB, never computed client-side.
+// ── Slot Distribution ──────────────────────────────────────────────────────
 
 export async function distributeSlots() {
-  // 1. Fetch all candidates ordered by created_at (deterministic)
-  const { data: candidates, error: fetchErr } = await supabaseAdmin
-    .from("candidate_profiles")
-    .select("id")
-    .order("created_at", { ascending: true });
+  const candidates = await db.execute(
+    "SELECT id FROM candidate_profiles ORDER BY created_at ASC"
+  );
+  if (!candidates.rows.length) return { distributed: 0 };
 
-  if (fetchErr) throw fetchErr;
-  if (!candidates || candidates.length === 0) {
-    return { distributed: 0 };
-  }
+  const slots = await db.execute(
+    "SELECT id FROM slots ORDER BY slot_day ASC, slot_number ASC, slot_venue ASC"
+  );
+  if (!slots.rows.length) throw new Error("No slots found in DB.");
 
-  // 2. Fetch all 48 slot UUIDs in their canonical order
-  const { data: slots, error: slotErr } = await supabaseAdmin
-    .from("slots")
-    .select("id")
-    .order("slot_day", { ascending: true })
-    .order("slot_number", { ascending: true })
-    .order("slot_venue", { ascending: true });
+  const TOTAL_SLOTS = slots.rows.length;
 
-  if (slotErr) throw slotErr;
-  if (!slots || slots.length === 0) throw new Error("No slots found in DB.");
+  const stmts = candidates.rows.map((c, i) => ({
+    sql: `UPDATE candidate_status SET slot_id = ?, updated_at = datetime('now') WHERE candidate_id = ?`,
+    args: [slots.rows[i % TOTAL_SLOTS].id, c.id],
+  }));
 
-  const TOTAL_SLOTS = slots.length;
-
-  // 3. Round-robin across the UUID slot ids
-  for (let i = 0; i < candidates.length; i++) {
-    const slotId = slots[i % TOTAL_SLOTS].id; // UUID string
-    const { error: updateErr } = await supabaseAdmin
-      .from("candidate_profiles")
-      .update({ slot_id: slotId })
-      .eq("id", candidates[i].id);
-    if (updateErr) throw updateErr;
-  }
-
-  return { distributed: candidates.length };
+  await db.batch(stmts, "write");
+  return { distributed: candidates.rows.length };
 }
 
 export async function getSlotSummary() {
-  // Fetch all 48 slots with a count of assigned candidates
-  const { data: slots, error: slotErr } = await supabaseAdmin
-    .from("slots")
-    .select("id, slot_day, slot_number, slot_venue")
-    .order("slot_day", { ascending: true })
-    .order("slot_number", { ascending: true })
-    .order("slot_venue", { ascending: true });
-
-  if (slotErr) throw slotErr;
-
-  // Count candidates per slot_id
-  const { data: counts, error: countErr } = await supabaseAdmin
-    .from("candidate_profiles")
-    .select("slot_id")
-    .not("slot_id", "is", null);
-
-  if (countErr) throw countErr;
+  const slots = await db.execute(
+    "SELECT id, slot_day, slot_number, slot_venue FROM slots ORDER BY slot_day ASC, slot_number ASC, slot_venue ASC"
+  );
+  const counts = await db.execute(
+    "SELECT slot_id, COUNT(*) as cnt FROM candidate_status WHERE slot_id IS NOT NULL GROUP BY slot_id"
+  );
 
   const countMap = {};
-  for (const row of counts || []) {
-    countMap[row.slot_id] = (countMap[row.slot_id] || 0) + 1;
+  for (const row of counts.rows) {
+    countMap[row.slot_id] = Number(row.cnt);
   }
 
-  return (slots || []).map((s) => ({ ...s, count: countMap[s.id] || 0 }));
+  return slots.rows.map((s) => ({ ...s, count: countMap[s.id] || 0 }));
 }
 
 export async function clearSlots() {
-  const { error } = await supabaseAdmin
-    .from("candidate_profiles")
-    .update({ slot_id: null })
-    .gt("id", 0);
-  if (error) throw error;
+  await db.execute(
+    "UPDATE candidate_status SET slot_id = NULL WHERE slot_id IS NOT NULL"
+  );
   return { cleared: true };
 }
 
-// ── Slot Schedules ─────────────────────────────────────────────────────────────
-// Day dates and per-slot-number start times, stored in two small tables.
+// ── Slot Schedules ─────────────────────────────────────────────────────────
 
 export async function getSlotSchedules() {
-  const [{ data: days, error: dayErr }, { data: times, error: timeErr }] =
-    await Promise.all([
-      supabaseAdmin
-        .from("slot_day_dates")
-        .select("day_number, slot_date")
-        .order("day_number"),
-      supabaseAdmin
-        .from("slot_time_schedules")
-        .select("slot_number, start_time")
-        .order("slot_number"),
-    ]);
-
-  if (dayErr) throw dayErr;
-  if (timeErr) throw timeErr;
-
-  return { days: days || [], times: times || [] };
+  const [days, times] = await Promise.all([
+    db.execute("SELECT day_number, slot_date FROM slot_day_dates ORDER BY day_number"),
+    db.execute("SELECT slot_number, start_time FROM slot_time_schedules ORDER BY slot_number"),
+  ]);
+  return { days: days.rows, times: times.rows };
 }
 
 export async function setDayDate(dayNumber, slotDate) {
-  // slotDate: "YYYY-MM-DD" string or null to clear
-  const { error } = await supabaseAdmin
-    .from("slot_day_dates")
-    .update({ slot_date: slotDate || null })
-    .eq("day_number", dayNumber);
-
-  if (error) throw error;
+  await db.execute({
+    sql: "UPDATE slot_day_dates SET slot_date = ? WHERE day_number = ?",
+    args: [slotDate || null, dayNumber],
+  });
   return { dayNumber, slotDate };
 }
 
 export async function setSlotTime(slotNumber, startTime) {
-  // startTime: "HH:MM" string or null to clear
-  const { error } = await supabaseAdmin
-    .from("slot_time_schedules")
-    .update({ start_time: startTime || null })
-    .eq("slot_number", slotNumber);
-
-  if (error) throw error;
+  await db.execute({
+    sql: "UPDATE slot_time_schedules SET start_time = ? WHERE slot_number = ?",
+    args: [startTime || null, slotNumber],
+  });
   return { slotNumber, startTime };
 }
 
+const VENUES = ["LP106", "LP107", "LP108", "LP109"];
+
 export async function addDayToSchedule(dayNumber) {
-  const { error: dayErr } = await supabaseAdmin
-    .from("slot_day_dates")
-    .upsert(
-      { day_number: dayNumber, slot_date: null },
-      { onConflict: "day_number" },
-    );
-  if (dayErr) throw dayErr;
+  await db.execute({
+    sql: "INSERT INTO slot_day_dates (day_number, slot_date) VALUES (?, NULL) ON CONFLICT (day_number) DO NOTHING",
+    args: [dayNumber],
+  });
 
-  const { data: times, error: timesErr } = await supabaseAdmin
-    .from("slot_time_schedules")
-    .select("slot_number");
-  if (timesErr) throw timesErr;
-
-  const VENUES = ["LP106", "LP107", "LP108", "LP109"];
-  const slotNums = (times || []).map((t) => t.slot_number);
+  const times = await db.execute("SELECT slot_number FROM slot_time_schedules");
+  const slotNums = times.rows.map((t) => t.slot_number);
 
   if (slotNums.length > 0) {
-    const newSlots = [];
+    const stmts = [];
     for (const num of slotNums) {
       for (const venue of VENUES) {
-        newSlots.push({
-          slot_day: dayNumber,
-          slot_number: num,
-          slot_venue: venue,
+        stmts.push({
+          sql: "INSERT INTO slots (slot_day, slot_number, slot_venue) VALUES (?, ?, ?) ON CONFLICT (slot_day, slot_number, slot_venue) DO NOTHING",
+          args: [dayNumber, num, venue],
         });
       }
     }
-    const { error: slotErr } = await supabaseAdmin
-      .from("slots")
-      .upsert(newSlots, { onConflict: "slot_day,slot_number,slot_venue" });
-    if (slotErr) throw slotErr;
+    await db.batch(stmts, "write");
   }
-
   return { dayNumber };
 }
 
 export async function removeDayFromSchedule(dayNumber) {
-  const { data: slotsToRemove, error: fetchErr } = await supabaseAdmin
-    .from("slots")
-    .select("id")
-    .eq("slot_day", dayNumber);
-  if (fetchErr) throw fetchErr;
+  const slotsToRemove = await db.execute({
+    sql: "SELECT id FROM slots WHERE slot_day = ?",
+    args: [dayNumber],
+  });
 
-  if (slotsToRemove && slotsToRemove.length > 0) {
-    const ids = slotsToRemove.map((s) => s.id);
-    const { error: clearErr } = await supabaseAdmin
-      .from("candidate_profiles")
-      .update({ slot_id: null })
-      .in("slot_id", ids);
-    if (clearErr) throw clearErr;
-
-    const { error: slotDelErr } = await supabaseAdmin
-      .from("slots")
-      .delete()
-      .eq("slot_day", dayNumber);
-    if (slotDelErr) throw slotDelErr;
+  if (slotsToRemove.rows.length > 0) {
+    const ids = slotsToRemove.rows.map((s) => s.id);
+    const placeholders = ids.map(() => "?").join(", ");
+    await db.execute({
+      sql: `UPDATE candidate_status SET slot_id = NULL WHERE slot_id IN (${placeholders})`,
+      args: ids,
+    });
+    await db.execute({ sql: "DELETE FROM slots WHERE slot_day = ?", args: [dayNumber] });
   }
 
-  const { error: dayDelErr } = await supabaseAdmin
-    .from("slot_day_dates")
-    .delete()
-    .eq("day_number", dayNumber);
-  if (dayDelErr) throw dayDelErr;
-
+  await db.execute({ sql: "DELETE FROM slot_day_dates WHERE day_number = ?", args: [dayNumber] });
   return { dayNumber };
 }
 
 export async function addSlotToSchedule(slotNumber) {
-  const { error: timeErr } = await supabaseAdmin
-    .from("slot_time_schedules")
-    .upsert(
-      { slot_number: slotNumber, start_time: null },
-      { onConflict: "slot_number" },
-    );
-  if (timeErr) throw timeErr;
+  await db.execute({
+    sql: "INSERT INTO slot_time_schedules (slot_number, start_time) VALUES (?, NULL) ON CONFLICT (slot_number) DO NOTHING",
+    args: [slotNumber],
+  });
 
-  const { data: days, error: daysErr } = await supabaseAdmin
-    .from("slot_day_dates")
-    .select("day_number");
-  if (daysErr) throw daysErr;
-
-  const VENUES = ["LP106", "LP107", "LP108", "LP109"];
-  const dayNums = (days || []).map((d) => d.day_number);
+  const days = await db.execute("SELECT day_number FROM slot_day_dates");
+  const dayNums = days.rows.map((d) => d.day_number);
 
   if (dayNums.length > 0) {
-    const newSlots = [];
+    const stmts = [];
     for (const day of dayNums) {
       for (const venue of VENUES) {
-        newSlots.push({
-          slot_day: day,
-          slot_number: slotNumber,
-          slot_venue: venue,
+        stmts.push({
+          sql: "INSERT INTO slots (slot_day, slot_number, slot_venue) VALUES (?, ?, ?) ON CONFLICT (slot_day, slot_number, slot_venue) DO NOTHING",
+          args: [day, slotNumber, venue],
         });
       }
     }
-    const { error: slotErr } = await supabaseAdmin
-      .from("slots")
-      .upsert(newSlots, { onConflict: "slot_day,slot_number,slot_venue" });
-    if (slotErr) throw slotErr;
+    await db.batch(stmts, "write");
   }
-
   return { slotNumber };
 }
 
 export async function removeSlotFromSchedule(slotNumber) {
-  const { data: slotsToRemove, error: fetchErr } = await supabaseAdmin
-    .from("slots")
-    .select("id")
-    .eq("slot_number", slotNumber);
-  if (fetchErr) throw fetchErr;
+  const slotsToRemove = await db.execute({
+    sql: "SELECT id FROM slots WHERE slot_number = ?",
+    args: [slotNumber],
+  });
 
-  if (slotsToRemove && slotsToRemove.length > 0) {
-    const ids = slotsToRemove.map((s) => s.id);
-    const { error: clearErr } = await supabaseAdmin
-      .from("candidate_profiles")
-      .update({ slot_id: null })
-      .in("slot_id", ids);
-    if (clearErr) throw clearErr;
-
-    const { error: slotDelErr } = await supabaseAdmin
-      .from("slots")
-      .delete()
-      .eq("slot_number", slotNumber);
-    if (slotDelErr) throw slotDelErr;
+  if (slotsToRemove.rows.length > 0) {
+    const ids = slotsToRemove.rows.map((s) => s.id);
+    const placeholders = ids.map(() => "?").join(", ");
+    await db.execute({
+      sql: `UPDATE candidate_status SET slot_id = NULL WHERE slot_id IN (${placeholders})`,
+      args: ids,
+    });
+    await db.execute({ sql: "DELETE FROM slots WHERE slot_number = ?", args: [slotNumber] });
   }
 
-  const { error: timeDelErr } = await supabaseAdmin
-    .from("slot_time_schedules")
-    .delete()
-    .eq("slot_number", slotNumber);
-  if (timeDelErr) throw timeDelErr;
-
+  await db.execute({ sql: "DELETE FROM slot_time_schedules WHERE slot_number = ?", args: [slotNumber] });
   return { slotNumber };
 }

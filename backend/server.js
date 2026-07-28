@@ -10,6 +10,7 @@ import { Server } from "socket.io";
 import authRoutes from "./src/routes/authRoute.js";
 import adminRoutes from "./src/routes/adminRoute.js";
 import dashboardRoutes from "./src/routes/dashboardRoute.js";
+import otpRoutes from "./src/routes/otpRoute.js";
 
 dotenv.config();
 
@@ -61,6 +62,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/otp", otpRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/dashboard", dashboardRoutes);
 

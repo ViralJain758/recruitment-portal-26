@@ -19,13 +19,22 @@ export async function signup(req, res) {
       .json({ message: "Email and password are required." });
   }
 
+  // Start OTP registration flow
   const { data, error } = await registerUser(email, password);
 
   if (error) {
-    return res.status(400).json({ message: error.message });
+    return res.status(400).json({
+      message: error.message,
+    });
   }
 
-  return res.status(201).json(data);
+  return res.status(200).json({
+    message:
+      data.message ||
+      "OTP sent to your email. Please verify to complete registration.",
+    requiresVerification: true,
+    email: data.email || email,
+  });
 }
 
 export async function login(req, res) {
@@ -45,42 +54,78 @@ export async function login(req, res) {
     : res.json(data);
 }
 
+// Normalize snake_case session from authModel into the camelCase shape
+// that useAuth.js expects.
+function normalizeSession(raw) {
+  if (!raw) return null;
+
+  // Already camelCase
+  if (raw.accessToken) return raw;
+
+  // Convert snake_case
+  return {
+    accessToken: raw.access_token,
+    refreshToken: raw.refresh_token,
+    expiresAt: raw.expires_at
+      ? typeof raw.expires_at === "number"
+        ? raw.expires_at
+        : Math.floor(new Date(raw.expires_at).getTime() / 1000)
+      : null,
+  };
+}
+
 export async function refresh(req, res) {
   const refreshToken = cleanText(req.body.refreshToken);
 
   if (!refreshToken) {
-    return res.status(400).json({ message: "Refresh token is required." });
+    return res.status(400).json({
+      message: "Refresh token is required.",
+    });
   }
 
   const { data, error } = await refreshUserSession(refreshToken);
 
-  return error
-    ? res.status(401).json({ message: error.message })
-    : res.json(data);
+  if (error) {
+    return res.status(401).json({
+      message: error.message,
+    });
+  }
+
+  return res.json({
+    ...data,
+    session: normalizeSession(data.session),
+  });
 }
 
 export async function saveCandidateDetails(req, res) {
   if (!req.body || typeof req.body !== "object") {
-    return res
-      .status(400)
-      .json({ message: "Candidate details payload is required." });
+    return res.status(400).json({
+      message: "Candidate details payload is required.",
+    });
   }
 
   const token = bearerToken(req);
 
   if (!token) {
-    return res.status(401).json({ message: "Missing access token." });
+    return res.status(401).json({
+      message: "Missing access token.",
+    });
   }
 
   const user = await userFromToken(token);
 
   if (!user) {
-    return res.status(401).json({ message: "Invalid or expired session." });
+    return res.status(401).json({
+      message: "Invalid or expired session.",
+    });
   }
 
   const { data, error, status } = await saveCandidate(req.body, user);
+
   if (error) {
-    return res.status(status).json({ message: error });
+    return res.status(status).json({
+      message: error,
+    });
   }
 
   req.app.get("io")?.emit("candidate:submitted", data);
@@ -97,7 +142,9 @@ export async function me(req, res) {
   const user = token ? await userFromToken(token) : null;
 
   if (!user) {
-    return res.status(401).json({ message: "Invalid or expired session." });
+    return res.status(401).json({
+      message: "Invalid or expired session.",
+    });
   }
 
   const profile = await fetchCandidateProfile(user.id);

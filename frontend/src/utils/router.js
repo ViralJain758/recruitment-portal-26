@@ -3,11 +3,13 @@ import { hasValidSession } from "./authStorage";
 export const CANDIDATE_DETAILS_PATH = "/candidate-details";
 export const DASHBOARD_PATH = "/dashboard";
 export const LOGIN_PATH = "/login";
+export const OTP_PATH = "/otp";
 export const SIGNUP_PATH = "/signup";
 export const routeViews = {
   [DASHBOARD_PATH]: "dashboard",
   [CANDIDATE_DETAILS_PATH]: "candidate-details",
   [LOGIN_PATH]: "login",
+  [OTP_PATH]: "otp",
   [SIGNUP_PATH]: "signup",
 };
 

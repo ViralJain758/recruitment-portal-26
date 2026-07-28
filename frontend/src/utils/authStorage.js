@@ -1,4 +1,5 @@
 export const AUTH_STORAGE_KEY = "recruitmentPortalAuth";
+export const PENDING_SIGNUP_STORAGE_KEY = "recruitmentPortalPendingSignup";
 
 export function hasValidSession(session) {
   return Boolean(session?.accessToken);
@@ -41,4 +42,47 @@ export function persistAuth(authSession, candidateProfile) {
     AUTH_STORAGE_KEY,
     JSON.stringify({ authSession, candidateProfile }),
   );
+}
+
+export function readPendingSignup() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const storedSignup = window.sessionStorage.getItem(
+      PENDING_SIGNUP_STORAGE_KEY,
+    );
+
+    return storedSignup ? JSON.parse(storedSignup) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function persistPendingSignup(pendingSignup) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (!pendingSignup?.email || !pendingSignup?.password) {
+    window.sessionStorage.removeItem(PENDING_SIGNUP_STORAGE_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(
+    PENDING_SIGNUP_STORAGE_KEY,
+    JSON.stringify({
+      email: pendingSignup.email,
+      password: pendingSignup.password,
+    }),
+  );
+}
+
+export function clearPendingSignup() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.removeItem(PENDING_SIGNUP_STORAGE_KEY);
 }

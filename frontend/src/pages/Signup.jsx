@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import AuthForm from "../components/AuthForm";
 import useFormFields from "../hooks/useFormFields";
 import { signup, getGlobalLock } from "../lib/api";
+import { persistPendingSignup } from "../utils/authStorage";
 
 export default function Signup({ onSignupSuccess }) {
   const navigate = useNavigate();
@@ -55,6 +56,15 @@ export default function Signup({ onSignupSuccess }) {
         email,
         password,
       });
+
+      if (response.requiresVerification) {
+        persistPendingSignup({ email, password });
+        navigate("/otp", {
+          replace: true,
+          state: { email, password },
+        });
+        return;
+      }
 
       if (!response.session?.accessToken) {
         throw new Error("Account created, but sign in could not be completed.");

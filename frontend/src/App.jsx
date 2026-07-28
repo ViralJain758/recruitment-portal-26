@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
+import Otp from "./pages/Otp";
 import CandidateDetails from "./pages/CandidateDetails";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -28,10 +29,9 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/signup" replace />} />
 
-      <Route
-        path="/signup"
-        element={<Signup onSignupSuccess={register} />}
-      />
+      <Route path="/signup" element={<Signup onSignupSuccess={register} />} />
+
+      <Route path="/otp" element={<Otp onSignupSuccess={register} />} />
 
       <Route
         path="/login"
@@ -65,11 +65,7 @@ export default function App() {
       <Route
         path="/admin-dashboard"
         element={
-          isAdmin ? (
-            <AdminDashboard />
-          ) : (
-            <Navigate to="/login" replace />
-          )
+          isAdmin ? <AdminDashboard /> : <Navigate to="/login" replace />
         }
       />
     </Routes>
