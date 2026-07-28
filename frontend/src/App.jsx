@@ -27,7 +27,10 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/signup" replace />} />
+      <Route
+        path="/"
+        element={<Navigate to={authSession ? "/dashboard" : "/signup"} replace />}
+      />
 
       <Route path="/signup" element={<Signup onSignupSuccess={register} />} />
 

@@ -56,6 +56,7 @@ function useSlotInfo(slotId) {
           day: row.slot_day,
           num: row.slot_number,
           venue: row.slot_venue,
+          isActive: Boolean(row.is_active),
           slotDate: dayRow?.slot_date ?? null, // "YYYY-MM-DD" or null
           startTime: timeRow?.start_time ?? null, // "HH:MM:SS" or null
         });
@@ -161,15 +162,12 @@ function formatUnlockMoment(date) {
   });
   return `${day}, ${time}`;
 }
-<<<<<<< HEAD
 
 const SUPPORT = {
   email: "msc@thapar.edu",
   phone: "+91 9720257315",
   phone2: "+91 9914589960",
 };
-=======
->>>>>>> 0041c9a (add slot distribution system)
 
 const FAQS = [
   {
@@ -757,6 +755,9 @@ export default function Dashboard() {
   const status = profile.application_status ?? "Pending";
   const statusKey = status.toLowerCase();
   const isLocked = profile.form_locked === true;
+  const isPresent = Boolean(profile.quiz_attended);
+  const isSlotActive = Boolean(slotInfo?.isActive);
+  const canEnterTest = isPresent && isSlotActive;
 
   function handleSaved(updatedProfile) {
     const merged = { ...profile, ...updatedProfile };
@@ -1271,6 +1272,29 @@ export default function Dashboard() {
               Please arrive at the venue on time. Bring your college ID and show
               the QR code above for attendance.
             </p>
+
+            <div className="cd-card-actions">
+              <button
+                className="cd-btn cd-btn--primary"
+                disabled={!canEnterTest}
+                onClick={() => {
+                  if (!canEnterTest) return;
+                  push(
+                    "Your attendance is marked and your slot is active. Proceed to the venue.",
+                    "success",
+                  );
+                }}
+                title={
+                  canEnterTest
+                    ? "Your test is ready"
+                    : !isPresent
+                      ? "Available after attendance is marked present"
+                      : "Waiting for admin to activate your slot"
+                }
+              >
+                {canEnterTest ? "Enter Test" : "Test Locked"}
+              </button>
+            </div>
           </div>
         );
       })()}

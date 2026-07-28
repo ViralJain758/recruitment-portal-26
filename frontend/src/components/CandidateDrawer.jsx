@@ -37,7 +37,7 @@ export default function CandidateDrawer({
 
   if (!candidate) return null;
 
-  const isPresent = candidate.quiz_attended === true;
+  const isPresent = Boolean(candidate.quiz_attended);
   const isLocked = candidate.form_locked === true;
   const isIndividuallyUnlocked = candidate.individual_unlock === true;
   const resolvedSlot = resolveSlot(

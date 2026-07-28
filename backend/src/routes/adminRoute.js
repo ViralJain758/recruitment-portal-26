@@ -14,6 +14,7 @@ import {
   distributeSlotHandler,
   getSlotSummaryHandler,
   clearSlotsHandler,
+  setSlotActiveHandler,
   getSlotSchedulesHandler,
   setDayDateHandler,
   setSlotTimeHandler,
@@ -44,6 +45,7 @@ router.patch("/global-lock", setGlobalLockStatus);
 router.post("/slots/distribute", distributeSlotHandler);
 router.get("/slots/summary", getSlotSummaryHandler);
 router.delete("/slots", clearSlotsHandler);
+router.patch("/slots/:slotId/active", setSlotActiveHandler);
 
 // Slot schedules (day dates + slot times) — dynamic
 router.get("/slots/schedules", getSlotSchedulesHandler);

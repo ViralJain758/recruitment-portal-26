@@ -364,6 +364,7 @@
   transition:
     transform 0.1s,
     box-shadow 0.1s;
+  position: relative;
 }
 
 .slot-cell:hover {
@@ -375,6 +376,35 @@
   background: #f9fafb;
   border-color: #e5e7eb;
   opacity: 0.7;
+}
+
+.slot-cell--active {
+  border-color: #86efac;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.12);
+}
+
+.slot-cell-toggle {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #e5e7eb;
+  color: #475569;
+  font-size: 0.62rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.slot-cell-toggle--active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.slot-cell-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .slot-cell-id {
@@ -491,11 +521,7 @@
 }
 
 /* ── Responsive ── */
-<<<<<<< HEAD
 
-/* ── 700px: collapse schedule config to single column ── */
-=======
->>>>>>> 0041c9a (add slot distribution system)
 @media (max-width: 700px) {
   .sched-config-body {
     grid-template-columns: 1fr;
@@ -507,17 +533,12 @@
   }
 }
 
-<<<<<<< HEAD
-/* ── 640px: slot panel header stacks, grid shrinks ── */
-=======
->>>>>>> 0041c9a (add slot distribution system)
 @media (max-width: 640px) {
   .slot-panel-header {
     flex-direction: column;
     align-items: flex-start;
-<<<<<<< HEAD
     gap: 12px;
-    padding: 16px 16px;
+    padding: 16px;
   }
 
   .slot-panel-actions {
@@ -527,7 +548,6 @@
     gap: 8px;
   }
 
-  /* Distribute Slots button spans full width */
   .slot-panel-actions .btn--primary {
     grid-column: 1 / -1;
   }
@@ -539,17 +559,10 @@
 
   .slot-day-grid {
     grid-template-columns: 70px repeat(4, 1fr);
-=======
-  }
-
-  .slot-day-grid {
-    grid-template-columns: 80px repeat(4, 1fr);
->>>>>>> 0041c9a (add slot distribution system)
     gap: 4px;
   }
 
   .slot-venue-header {
-<<<<<<< HEAD
     font-size: 0.64rem;
     padding: 5px 2px;
     letter-spacing: 0;
@@ -573,23 +586,16 @@
     padding: 5px 2px;
   }
 
+  .slot-cell-toggle {
+    top: 4px;
+    right: 4px;
+    padding: 2px 6px;
+    font-size: 0.56rem;
+  }
+
   .slot-cell-id {
     font-size: 0.52rem;
-=======
-    font-size: 0.68rem;
-    padding: 4px 2px;
   }
-
-  .slot-cell {
-    min-height: 44px;
-    padding: 4px 2px;
->>>>>>> 0041c9a (add slot distribution system)
-  }
-
-  .slot-cell-count {
-    font-size: 1rem;
-  }
-<<<<<<< HEAD
 
   .slot-cell-label {
     font-size: 0.58rem;
@@ -614,9 +620,7 @@
   }
 }
 
-/* ── 480px: switch grid to card-based stacked layout ── */
 @media (max-width: 480px) {
-  /* Schedule config rows become vertical */
   .sched-row {
     flex-wrap: wrap;
     gap: 8px;
@@ -636,24 +640,20 @@
     min-width: 0;
   }
 
-  /* Slot grid switches from CSS-grid to card layout */
   .slot-day-grid {
     display: flex;
     flex-direction: column;
     gap: 0;
   }
 
-  /* Hide the corner cell (top-left blank) */
   .slot-corner {
     display: none;
   }
 
-  /* Venue headers become hidden — label shown inside each card instead */
   .slot-venue-header:not(.slot-corner) {
     display: none;
   }
 
-  /* Each slot row becomes a card */
   .slot-row-label {
     background: #eef3fb;
     border-radius: 8px 8px 0 0;
@@ -677,7 +677,6 @@
     padding: 1px 7px;
   }
 
-  /* Each venue cell becomes a full-width row with venue label prepended */
   .slot-cell {
     flex-direction: row;
     align-items: center;
@@ -697,7 +696,6 @@
     margin-bottom: 12px;
   }
 
-  /* Add venue name using data-venue attribute set in JSX */
   .slot-cell::before {
     content: attr(data-venue);
     font-size: 0.72rem;
@@ -739,13 +737,11 @@
     color: #9ca3af;
   }
 
-  /* Day label */
   .slot-day-label {
     font-size: 0.78rem;
     margin-bottom: 6px;
   }
 
-  /* Action buttons go full-width single column on very small screens */
   .slot-panel-actions {
     grid-template-columns: 1fr;
   }
@@ -754,7 +750,6 @@
     grid-column: auto;
   }
 
-  /* Minimised bar */
   .slot-grid-minimised-bar {
     flex-wrap: wrap;
     gap: 8px;
@@ -764,6 +759,4 @@
     width: 100%;
     justify-content: center;
   }
-=======
->>>>>>> 0041c9a (add slot distribution system)
 }

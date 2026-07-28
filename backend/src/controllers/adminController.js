@@ -13,6 +13,7 @@ import {
   distributeSlots,
   getSlotSummary,
   clearSlots,
+  setSlotActive,
   getSlotSchedules,
   setDayDate,
   setSlotTime,
@@ -289,6 +290,40 @@ export async function clearSlotsHandler(req, res) {
     return res
       .status(500)
       .json({ message: error.message || "Failed to clear slots." });
+  }
+}
+
+export async function setSlotActiveHandler(req, res) {
+  try {
+    const slotId = Number(req.params.slotId);
+    const { active } = req.body;
+
+    if (!slotId || slotId < 1) {
+      return res
+        .status(400)
+        .json({ message: "slotId must be a positive integer" });
+    }
+
+    if (typeof active !== "boolean") {
+      return res.status(400).json({ message: "`active` must be a boolean" });
+    }
+
+    const slot = await setSlotActive(slotId, active);
+
+    if (!slot) {
+      return res.status(404).json({ message: "Slot not found." });
+    }
+
+    req.app.get("io")?.emit("slots:summary_updated", { slot });
+    return res.json({
+      message: active ? "Slot activated." : "Slot deactivated.",
+      slot,
+    });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Failed to update slot activation." });
   }
 }
 

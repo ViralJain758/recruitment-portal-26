@@ -1,51 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { refreshSession } from "../lib/api";
-
-const AUTH_STORAGE_KEY = "recruitmentPortalAuth";
-
-function hasValidSession(session) {
-  return Boolean(session?.accessToken);
-}
-
-function readStoredAuth() {
-  try {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-
-    if (!stored) {
-      return {
-        authSession: null,
-        candidateProfile: null,
-      };
-    }
-
-    const parsed = JSON.parse(stored);
-
-    return {
-      authSession: parsed.authSession || null,
-      candidateProfile: parsed.candidateProfile || null,
-    };
-  } catch {
-    return {
-      authSession: null,
-      candidateProfile: null,
-    };
-  }
-}
-
-function persistAuth(authSession, candidateProfile) {
-  if (!hasValidSession(authSession)) {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    return;
-  }
-
-  localStorage.setItem(
-    AUTH_STORAGE_KEY,
-    JSON.stringify({
-      authSession,
-      candidateProfile,
-    }),
-  );
-}
+import {
+  hasValidSession,
+  persistAuth,
+  readStoredAuth,
+} from "../utils/authStorage";
 
 function buildProfile(profile, user, session, existing = {}) {
   return {
@@ -59,6 +18,7 @@ function buildProfile(profile, user, session, existing = {}) {
 
 export function useAuth() {
   const [storedAuth] = useState(() => readStoredAuth());
+  const restoreStarted = useRef(false);
   const [authSession, setAuthSession] = useState(storedAuth.authSession);
   const [candidateProfile, setCandidateProfile] = useState(
     storedAuth.candidateProfile,
@@ -69,7 +29,14 @@ export function useAuth() {
 
   useEffect(() => {
     async function restoreSession() {
+      if (restoreStarted.current) {
+        return;
+      }
+
+      restoreStarted.current = true;
+
       if (!hasValidSession(storedAuth.authSession)) {
+        setAuthReady(true);
         return;
       }
 
@@ -90,7 +57,7 @@ export function useAuth() {
 
         persistAuth(restored.session, profile);
       } catch {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
+        persistAuth(null, null);
 
         setAuthSession(null);
         setCandidateProfile(null);
@@ -137,7 +104,7 @@ export function useAuth() {
   };
 
   const logout = () => {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    persistAuth(null, null);
 
     setAuthSession(null);
     setCandidateProfile(null);

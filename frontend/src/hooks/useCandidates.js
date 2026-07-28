@@ -10,6 +10,7 @@ import {
   setGlobalLock,
   distributeSlots,
   getSlotSummary,
+  setSlotActivation,
   clearAllSlots,
   getSlotSchedules,
   updateDayDate,
@@ -186,6 +187,18 @@ export function useCandidates() {
     }
   }
 
+  async function toggleSlotActivation(slotId, active) {
+    try {
+      const updated = await setSlotActivation(slotId, active);
+      await fetchSlotSummary();
+      return updated;
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Failed to update slot activation.");
+      return null;
+    }
+  }
+
   async function saveDayDate(dayNumber, slotDate) {
     setSchedulesLoading(true);
     try {
@@ -330,6 +343,10 @@ export function useCandidates() {
       fetchSlotSchedules();
     }
 
+    function handleSlotSummaryUpdated() {
+      fetchSlotSummary();
+    }
+
     adminSocket.on("candidate:submitted", handleCandidateChange);
     adminSocket.on("candidate:updated", handleCandidateChange);
     adminSocket.on("candidate:deleted", handleCandidateDeleted);
@@ -337,6 +354,7 @@ export function useCandidates() {
     adminSocket.on("slots:distributed", handleSlotsDistributed);
     adminSocket.on("slots:cleared", handleSlotsCleared);
     adminSocket.on("slots:schedules_updated", handleSchedulesUpdated);
+    adminSocket.on("slots:summary_updated", handleSlotSummaryUpdated);
     adminSocket.on("connect_error", (err) => {
       console.error("Socket connection error:", err.message);
     });
@@ -350,6 +368,7 @@ export function useCandidates() {
       adminSocket.off("slots:distributed", handleSlotsDistributed);
       adminSocket.off("slots:cleared", handleSlotsCleared);
       adminSocket.off("slots:schedules_updated", handleSchedulesUpdated);
+      adminSocket.off("slots:summary_updated", handleSlotSummaryUpdated);
       adminSocket.disconnect();
     };
   }, []);
@@ -370,6 +389,7 @@ export function useCandidates() {
     slotLoading,
     runDistributeSlots,
     runClearSlots,
+    toggleSlotActivation,
     slotSchedules,
     schedulesLoading,
     saveDayDate,

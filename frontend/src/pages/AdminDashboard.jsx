@@ -32,6 +32,7 @@ export default function AdminDashboard() {
     slotLoading,
     runDistributeSlots,
     runClearSlots,
+    toggleSlotActivation,
     slotSchedules,
     schedulesLoading,
     saveDayDate,
@@ -262,6 +263,7 @@ export default function AdminDashboard() {
         totalCandidates={candidates.length}
         onDistribute={runDistributeSlots}
         onClear={runClearSlots}
+        onToggleSlotActivation={toggleSlotActivation}
         schedules={slotSchedules}
         schedulesLoading={schedulesLoading}
         onSaveDayDate={saveDayDate}

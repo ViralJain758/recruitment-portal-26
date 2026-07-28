@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import AuthForm from "../components/AuthForm";
 import useFormFields from "../hooks/useFormFields";
 import { login } from "../lib/api";
+import { persistAuth } from "../utils/authStorage";
 
 export default function Login({ onAdminLoginSuccess, onLoginSuccess }) {
   const navigate = useNavigate();
@@ -37,9 +38,7 @@ export default function Login({ onAdminLoginSuccess, onLoginSuccess }) {
       }
 
       localStorage.removeItem("isAdmin");
-      localStorage.setItem("accessToken", data.session.accessToken);
-      localStorage.setItem("refreshToken", data.session.refreshToken);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      persistAuth(data.session, data.profile ?? data.user ?? null);
 
       onLoginSuccess?.(data);
       navigate(data.redirectTo || "/dashboard", { replace: true });

@@ -7,6 +7,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
+import db from "./src/config/db.js";
 import authRoutes from "./src/routes/authRoute.js";
 import adminRoutes from "./src/routes/adminRoute.js";
 import dashboardRoutes from "./src/routes/dashboardRoute.js";
@@ -17,10 +18,25 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 const port = process.env.PORT || 5000;
-const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const configuredOrigins = (process.env.CLIENT_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  ...configuredOrigins,
+];
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  return allowedOrigins.includes(origin);
+}
+
 const io = new Server(httpServer, {
   cors: {
-    origin: clientOrigin,
+    origin: allowedOrigins,
     credentials: true,
   },
 });
@@ -36,7 +52,14 @@ io.on("connection", (socket) => {
 
 app.use(
   cors({
-    origin: clientOrigin,
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin not allowed: ${origin}`));
+    },
     credentials: true,
   }),
 );
@@ -72,6 +95,19 @@ app.use((err, _req, res, _next) => {
     message: err.message || "Internal server error",
   });
 });
+
+async function ensureSlotActivationColumn() {
+  const result = await db.execute("PRAGMA table_info(slots)");
+  const hasIsActive = result.rows.some((row) => row.name === "is_active");
+
+  if (!hasIsActive) {
+    await db.execute(
+      "ALTER TABLE slots ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+}
+
+await ensureSlotActivationColumn();
 
 httpServer.listen(port, () => {
   console.log(`Auth server running on port ${port}`);

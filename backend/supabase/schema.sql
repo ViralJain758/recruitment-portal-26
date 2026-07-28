@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS slots (
   slot_day    INTEGER NOT NULL,
   slot_number INTEGER NOT NULL,
   slot_venue  TEXT    NOT NULL,
+  is_active   INTEGER NOT NULL DEFAULT 0,
   UNIQUE (slot_day, slot_number, slot_venue)
 );
 

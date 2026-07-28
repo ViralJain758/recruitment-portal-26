@@ -146,6 +146,13 @@ export function getSlotSummary() {
   return request("/api/admin/slots/summary");
 }
 
+export function setSlotActivation(slotId, active) {
+  return request(`/api/admin/slots/${slotId}/active`, {
+    method: "PATCH",
+    body: JSON.stringify({ active }),
+  });
+}
+
 export function clearAllSlots() {
   return request("/api/admin/slots", { method: "DELETE" });
 }

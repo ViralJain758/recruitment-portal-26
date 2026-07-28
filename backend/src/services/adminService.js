@@ -1,5 +1,8 @@
 import db from "../config/db.js";
-import { findAllCandidates, findCandidateById } from "../models/candidateModel.js";
+import {
+  findAllCandidates,
+  findCandidateById,
+} from "../models/candidateModel.js";
 
 // ── Candidates ─────────────────────────────────────────────────────────────
 
@@ -75,8 +78,14 @@ async function resolveCandidateSlotDateTime(slotId) {
   if (!slot) return null;
 
   const [dayResult, timeResult] = await Promise.all([
-    db.execute({ sql: "SELECT slot_date FROM slot_day_dates WHERE day_number = ?", args: [slot.slot_day] }),
-    db.execute({ sql: "SELECT start_time FROM slot_time_schedules WHERE slot_number = ?", args: [slot.slot_number] }),
+    db.execute({
+      sql: "SELECT slot_date FROM slot_day_dates WHERE day_number = ?",
+      args: [slot.slot_day],
+    }),
+    db.execute({
+      sql: "SELECT start_time FROM slot_time_schedules WHERE slot_number = ?",
+      args: [slot.slot_number],
+    }),
   ]);
 
   const slotDate = dayResult.rows[0]?.slot_date;
@@ -113,10 +122,12 @@ export async function markQuizAttendance(qrToken) {
 
   const slotDateTime = await resolveCandidateSlotDateTime(row.slot_id);
   if (slotDateTime) {
-    const unlockAt = new Date(slotDateTime.getTime() - QR_UNLOCK_MINUTES_BEFORE * 60_000);
+    const unlockAt = new Date(
+      slotDateTime.getTime() - QR_UNLOCK_MINUTES_BEFORE * 60_000,
+    );
     if (new Date() < unlockAt) {
       throw new Error(
-        `This QR code is not valid yet. It unlocks ${QR_UNLOCK_MINUTES_BEFORE} minutes before the candidate's slot.`
+        `This QR code is not valid yet. It unlocks ${QR_UNLOCK_MINUTES_BEFORE} minutes before the candidate's slot.`,
       );
     }
   }
@@ -135,7 +146,9 @@ export async function markQuizAttendance(qrToken) {
 export async function getAttendanceStatsService() {
   const [total, present] = await Promise.all([
     db.execute("SELECT COUNT(*) as count FROM candidate_profiles"),
-    db.execute("SELECT COUNT(*) as count FROM candidate_quiz WHERE quiz_attended = 1"),
+    db.execute(
+      "SELECT COUNT(*) as count FROM candidate_quiz WHERE quiz_attended = 1",
+    ),
   ]);
   return {
     totalCandidates: Number(total.rows[0].count),
@@ -192,8 +205,12 @@ export async function setGlobalLock(locked) {
 
 const PROFILE_FIELDS = ["full_name", "date_of_birth"];
 const FORM_FIELDS = [
-  "attendance", "join_reason", "primary_department",
-  "secondary_department", "other_societies", "recruit_reason",
+  "attendance",
+  "join_reason",
+  "primary_department",
+  "secondary_department",
+  "other_societies",
+  "recruit_reason",
 ];
 
 export async function updateCandidateDetails(userId, body) {
@@ -209,10 +226,14 @@ export async function updateCandidateDetails(userId, body) {
 
   const globallyLocked = await getGlobalLock();
   if (globallyLocked && !existing.individual_unlock) {
-    throw new Error("Registrations are closed. No further changes can be made.");
+    throw new Error(
+      "Registrations are closed. No further changes can be made.",
+    );
   }
   if (existing.form_locked) {
-    throw new Error("Your form has been locked by the admin. No further changes can be made.");
+    throw new Error(
+      "Your form has been locked by the admin. No further changes can be made.",
+    );
   }
 
   const profilePayload = {};
@@ -236,7 +257,9 @@ export async function updateCandidateDetails(userId, body) {
   const stmts = [];
 
   if (Object.keys(profilePayload).length) {
-    const setClauses = Object.keys(profilePayload).map((k) => `${k} = ?`).join(", ");
+    const setClauses = Object.keys(profilePayload)
+      .map((k) => `${k} = ?`)
+      .join(", ");
     stmts.push({
       sql: `UPDATE candidate_profiles SET ${setClauses}, updated_at = datetime('now') WHERE id = ?`,
       args: [...Object.values(profilePayload), existing.id],
@@ -244,7 +267,9 @@ export async function updateCandidateDetails(userId, body) {
   }
 
   if (Object.keys(formPayload).length) {
-    const setClauses = Object.keys(formPayload).map((k) => `${k} = ?`).join(", ");
+    const setClauses = Object.keys(formPayload)
+      .map((k) => `${k} = ?`)
+      .join(", ");
     stmts.push({
       sql: `UPDATE candidate_form SET ${setClauses}, updated_at = datetime('now') WHERE candidate_id = ?`,
       args: [...Object.values(formPayload), existing.id],
@@ -261,12 +286,12 @@ export async function updateCandidateDetails(userId, body) {
 
 export async function distributeSlots() {
   const candidates = await db.execute(
-    "SELECT id FROM candidate_profiles ORDER BY created_at ASC"
+    "SELECT id FROM candidate_profiles ORDER BY created_at ASC",
   );
   if (!candidates.rows.length) return { distributed: 0 };
 
   const slots = await db.execute(
-    "SELECT id FROM slots ORDER BY slot_day ASC, slot_number ASC, slot_venue ASC"
+    "SELECT id FROM slots ORDER BY slot_day ASC, slot_number ASC, slot_venue ASC",
   );
   if (!slots.rows.length) throw new Error("No slots found in DB.");
 
@@ -283,10 +308,10 @@ export async function distributeSlots() {
 
 export async function getSlotSummary() {
   const slots = await db.execute(
-    "SELECT id, slot_day, slot_number, slot_venue FROM slots ORDER BY slot_day ASC, slot_number ASC, slot_venue ASC"
+    "SELECT id, slot_day, slot_number, slot_venue, is_active FROM slots ORDER BY slot_day ASC, slot_number ASC, slot_venue ASC",
   );
   const counts = await db.execute(
-    "SELECT slot_id, COUNT(*) as cnt FROM candidate_status WHERE slot_id IS NOT NULL GROUP BY slot_id"
+    "SELECT slot_id, COUNT(*) as cnt FROM candidate_status WHERE slot_id IS NOT NULL GROUP BY slot_id",
   );
 
   const countMap = {};
@@ -297,9 +322,25 @@ export async function getSlotSummary() {
   return slots.rows.map((s) => ({ ...s, count: countMap[s.id] || 0 }));
 }
 
+export async function setSlotActive(id, active) {
+  await db.execute({
+    sql: `UPDATE slots
+          SET is_active = ?
+          WHERE id = ?`,
+    args: [active ? 1 : 0, id],
+  });
+
+  const result = await db.execute({
+    sql: "SELECT id, slot_day, slot_number, slot_venue, is_active FROM slots WHERE id = ?",
+    args: [id],
+  });
+
+  return result.rows[0] ?? null;
+}
+
 export async function clearSlots() {
   await db.execute(
-    "UPDATE candidate_status SET slot_id = NULL WHERE slot_id IS NOT NULL"
+    "UPDATE candidate_status SET slot_id = NULL WHERE slot_id IS NOT NULL",
   );
   return { cleared: true };
 }
@@ -308,8 +349,12 @@ export async function clearSlots() {
 
 export async function getSlotSchedules() {
   const [days, times] = await Promise.all([
-    db.execute("SELECT day_number, slot_date FROM slot_day_dates ORDER BY day_number"),
-    db.execute("SELECT slot_number, start_time FROM slot_time_schedules ORDER BY slot_number"),
+    db.execute(
+      "SELECT day_number, slot_date FROM slot_day_dates ORDER BY day_number",
+    ),
+    db.execute(
+      "SELECT slot_number, start_time FROM slot_time_schedules ORDER BY slot_number",
+    ),
   ]);
   return { days: days.rows, times: times.rows };
 }
@@ -369,10 +414,16 @@ export async function removeDayFromSchedule(dayNumber) {
       sql: `UPDATE candidate_status SET slot_id = NULL WHERE slot_id IN (${placeholders})`,
       args: ids,
     });
-    await db.execute({ sql: "DELETE FROM slots WHERE slot_day = ?", args: [dayNumber] });
+    await db.execute({
+      sql: "DELETE FROM slots WHERE slot_day = ?",
+      args: [dayNumber],
+    });
   }
 
-  await db.execute({ sql: "DELETE FROM slot_day_dates WHERE day_number = ?", args: [dayNumber] });
+  await db.execute({
+    sql: "DELETE FROM slot_day_dates WHERE day_number = ?",
+    args: [dayNumber],
+  });
   return { dayNumber };
 }
 
@@ -413,9 +464,15 @@ export async function removeSlotFromSchedule(slotNumber) {
       sql: `UPDATE candidate_status SET slot_id = NULL WHERE slot_id IN (${placeholders})`,
       args: ids,
     });
-    await db.execute({ sql: "DELETE FROM slots WHERE slot_number = ?", args: [slotNumber] });
+    await db.execute({
+      sql: "DELETE FROM slots WHERE slot_number = ?",
+      args: [slotNumber],
+    });
   }
 
-  await db.execute({ sql: "DELETE FROM slot_time_schedules WHERE slot_number = ?", args: [slotNumber] });
+  await db.execute({
+    sql: "DELETE FROM slot_time_schedules WHERE slot_number = ?",
+    args: [slotNumber],
+  });
   return { slotNumber };
 }

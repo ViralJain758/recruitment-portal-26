@@ -5,7 +5,7 @@ const VENUES = ["LP106", "LP107", "LP108", "LP109"];
 
 export function shortUuid(uuid) {
   if (!uuid) return "—";
-  return uuid.slice(0, 8);
+  return String(uuid).slice(0, 8);
 }
 
 function findSlotId(summary, day, num, venue) {
@@ -20,7 +20,7 @@ function buildGrid(summary) {
   const map = {};
   for (const row of summary) {
     const key = `${row.slot_day}-${row.slot_number}-${row.slot_venue}`;
-    map[key] = { count: row.count, id: row.id };
+    map[key] = { count: row.count, id: row.id, is_active: row.is_active };
   }
   return map;
 }
@@ -334,6 +334,7 @@ export default function SlotDistribution({
   totalCandidates,
   onDistribute,
   onClear,
+  onToggleSlotActivation,
   schedules,
   schedulesLoading,
   onSaveDayDate,
@@ -659,16 +660,35 @@ export default function SlotDistribution({
                           const cell = grid[`${day}-${num}-${venue}`];
                           const count = cell?.count ?? 0;
                           const slotUuid = findSlotId(summary, day, num, venue);
+                          const slotActive =
+                            cell?.is_active === 1 || cell?.is_active === true;
                           return (
                             <div
                               key={`${day}-${num}-${venue}`}
-                              className={`slot-cell ${count === 0 ? "slot-cell--empty" : ""}`}
+                              className={`slot-cell ${count === 0 ? "slot-cell--empty" : ""} ${slotActive ? "slot-cell--active" : "slot-cell--inactive"}`}
                               title={slotUuid ? `Slot UUID: ${slotUuid}` : ""}
-<<<<<<< HEAD
                               data-venue={venue}
-=======
->>>>>>> 0041c9a (add slot distribution system)
                             >
+                              <button
+                                className={`slot-cell-toggle ${slotActive ? "slot-cell-toggle--active" : ""}`}
+                                onClick={() =>
+                                  slotUuid &&
+                                  onToggleSlotActivation?.(
+                                    slotUuid,
+                                    !slotActive,
+                                  )
+                                }
+                                disabled={!slotUuid || slotLoading}
+                                title={
+                                  slotUuid
+                                    ? slotActive
+                                      ? "Deactivate test for this slot"
+                                      : "Activate test for this slot"
+                                    : "No slot assigned"
+                                }
+                              >
+                                {slotActive ? "Active" : "Inactive"}
+                              </button>
                               <span className="slot-cell-id">
                                 {slotUuid ? shortUuid(slotUuid) + "…" : "—"}
                               </span>
