@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
+import { useExam } from "../context/ExamContext";
 import { updateCandidateDetails, getSlotSchedules } from "../lib/api";
 import mlscLogo from "../assets/MLSC-logo.png";
 import "./CandidateDashboard.css";
@@ -726,16 +726,22 @@ function EditModal({ profile, token, onClose, onSaved, onLocked }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function Dashboard() {
+export default function Dashboard({ candidateProfile, authSession, saveProfile, logout }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { candidateProfile, authSession, saveProfile, logout } = useAuth();
+  const { setCandidate } = useExam();
   const [profile, setProfile] = useState(candidateProfile ?? {});
   const [showEdit, setShowEdit] = useState(false);
   const { toasts, push, dismiss } = useToasts();
 
   // Resolve slot info (day, num, venue, date, time) from the UUID stored in profile
   const slotInfo = useSlotInfo(profile.slot_id ?? null);
+
+  useEffect(() => {
+    if (candidateProfile?.application_number) {
+      setProfile(candidateProfile);
+    }
+  }, [candidateProfile]);
 
   // Fire success toast once on arrival from CandidateDetails, then clear state
   useEffect(() => {
@@ -758,6 +764,19 @@ export default function Dashboard() {
   const isPresent = Boolean(profile.quiz_attended);
   const isSlotActive = Boolean(slotInfo?.isActive);
   const canEnterTest = isPresent && isSlotActive;
+
+  function handleEnterTest() {
+    setCandidate({
+      ...profile,
+      fullName: profile.full_name,
+      name: profile.full_name,
+      enrollmentNumber: profile.application_number,
+      email: profile.email,
+      applicationId: profile.application_number,
+      college: profile.college ?? "",
+    });
+    navigate("/instructions");
+  }
 
   function handleSaved(updatedProfile) {
     const merged = { ...profile, ...updatedProfile };
@@ -1279,10 +1298,7 @@ export default function Dashboard() {
                 disabled={!canEnterTest}
                 onClick={() => {
                   if (!canEnterTest) return;
-                  push(
-                    "Your attendance is marked and your slot is active. Proceed to the venue.",
-                    "success",
-                  );
+                  handleEnterTest();
                 }}
                 title={
                   canEnterTest
