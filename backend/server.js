@@ -1,5 +1,7 @@
 import express from "express";
 import { createServer } from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import hpp from "hpp";
@@ -13,7 +15,8 @@ import adminRoutes from "./src/routes/adminRoute.js";
 import dashboardRoutes from "./src/routes/dashboardRoute.js";
 import otpRoutes from "./src/routes/otpRoute.js";
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 const httpServer = createServer(app);

@@ -22,6 +22,8 @@ import {
   removeDayHandler,
   addSlotHandler,
   removeSlotHandler,
+  requireScannerPassword,
+  verifyScannerPassword,
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -33,8 +35,9 @@ router.patch("/candidates/:id/lock", lockCandidateForm);
 router.patch("/candidates/:id/individual-unlock", individualUnlockCandidate);
 router.delete("/candidates/:id", deleteCandidateById);
 
-router.post("/attendance", markCandidateAttendance);
-router.get("/attendance/stats", getAttendanceStats);
+router.post("/scanner/verify-password", verifyScannerPassword);
+router.post("/attendance", requireScannerPassword, markCandidateAttendance);
+router.get("/attendance/stats", requireScannerPassword, getAttendanceStats);
 router.patch("/candidate-details", updateOwnDetails);
 
 // Global form lock

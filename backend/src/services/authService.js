@@ -195,12 +195,14 @@ export async function loginUser(email, password) {
 
   if (error) return { error };
 
+  const profile = await fetchCandidateProfile(data.user.id);
+
   return {
     data: buildSessionResponse(
       data.session,
       data.user,
-      await fetchCandidateProfile(data.user.id),
-      "/dashboard"
+      profile,
+      profile?.application_number ? "/dashboard" : "/candidate-details"
     ),
   };
 }
@@ -260,12 +262,14 @@ export async function refreshUserSession(refreshToken) {
 
   if (error) return { error };
 
+  const profile = await fetchCandidateProfile(data.user.id);
+
   return {
     data: buildSessionResponse(
       data.session,
       data.user,
-      await fetchCandidateProfile(data.user.id),
-      "/dashboard"
+      profile,
+      profile?.application_number ? "/dashboard" : "/candidate-details"
     ),
   };
 }

@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import "./AdminDashboard.css";
 
 import mlscLogo from "../assets/MLSC-logo.png";
@@ -6,7 +7,6 @@ import mlscLogo from "../assets/MLSC-logo.png";
 import CandidateCard from "../components/CandidateCard";
 import CandidateDrawer from "../components/CandidateDrawer";
 import StatsGrid from "../components/StatsGrid";
-import AttendanceScanner from "../components/AttendanceScanner";
 import SlotDistribution from "../components/SlotDistribution";
 
 import { useCandidates } from "../hooks/useCandidates";
@@ -14,6 +14,7 @@ import { useCandidateFilters } from "../hooks/useCandidateFilters";
 import { calculateStats } from "../utils/candidateHelpers";
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [selectedCandidate, setSelectedCandidate] = useState(null);
 
   const {
@@ -42,8 +43,6 @@ export default function AdminDashboard() {
     addSlot,
     removeSlot,
   } = useCandidates();
-
-  const [showScanner, setShowScanner] = useState(false);
 
   const {
     search,
@@ -154,7 +153,7 @@ export default function AdminDashboard() {
             </button>
             <button
               className="btn btn--secondary"
-              onClick={() => setShowScanner(true)}
+              onClick={() => navigate("/scanner")}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -405,9 +404,6 @@ export default function AdminDashboard() {
         }}
       />
 
-      {showScanner && (
-        <AttendanceScanner onClose={() => setShowScanner(false)} />
-      )}
     </div>
   );
 }

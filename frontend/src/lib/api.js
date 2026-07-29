@@ -133,15 +133,31 @@ export async function getDashboard(signal) {
   return text || "Dashboard";
 }
 
-export function markAttendance(qrToken) {
+export function verifyScannerPassword(password) {
+  return request("/api/admin/scanner/verify-password", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
+function scannerAccessHeaders({ adminBypass, scannerPassword } = {}) {
+  return adminBypass
+    ? { "X-Admin-Scanner-Access": "true" }
+    : { "X-Scanner-Password": scannerPassword };
+}
+
+export function markAttendance(qrToken, scannerAccess) {
   return request("/api/admin/attendance", {
     method: "POST",
+    headers: scannerAccessHeaders(scannerAccess),
     body: JSON.stringify({ qrToken }),
   });
 }
 
-export function getAttendanceStats() {
-  return request("/api/admin/attendance/stats");
+export function getAttendanceStats(scannerAccess) {
+  return request("/api/admin/attendance/stats", {
+    headers: scannerAccessHeaders(scannerAccess),
+  });
 }
 
 // Slot distribution — admin only

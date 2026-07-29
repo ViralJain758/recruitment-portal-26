@@ -6,7 +6,12 @@ import Otp from "./pages/Otp";
 import CandidateDetails from "./pages/CandidateDetails";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import ScannerPage from "./pages/ScannerPage";
 import { useAuth } from "./hooks/useAuth";
+
+function hasCompletedCandidateForm(profile) {
+  return Boolean(profile?.application_number);
+}
 
 export default function App() {
   const [isAdmin, setIsAdmin] = useState(
@@ -62,7 +67,17 @@ export default function App() {
 
       <Route
         path="/dashboard"
-        element={authSession ? <Dashboard /> : <Navigate to="/login" replace />}
+        element={
+          authSession ? (
+            hasCompletedCandidateForm(candidateProfile) ? (
+              <Dashboard />
+            ) : (
+              <Navigate to="/candidate-details" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
       />
 
       <Route
@@ -70,6 +85,11 @@ export default function App() {
         element={
           isAdmin ? <AdminDashboard /> : <Navigate to="/login" replace />
         }
+      />
+
+      <Route
+        path="/scanner"
+        element={<ScannerPage />}
       />
     </Routes>
   );

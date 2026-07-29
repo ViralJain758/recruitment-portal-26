@@ -26,6 +26,38 @@ import { bearerToken, userFromToken } from "../services/authService.js";
 import db from "../config/db.js";
 import { deleteUserById } from "../models/authModel.js";
 
+function scannerPasswordMatches(password) {
+  const configuredPassword = process.env.SCANNER_PASSWORD?.trim();
+  const submittedPassword = typeof password === "string" ? password.trim() : "";
+
+  return Boolean(
+    configuredPassword &&
+      submittedPassword &&
+      submittedPassword === configuredPassword,
+  );
+}
+
+export function requireScannerPassword(req, res, next) {
+  const isAdminScannerAccess = req.headers["x-admin-scanner-access"] === "true";
+  const password = req.headers["x-scanner-password"];
+
+  if (!isAdminScannerAccess && !scannerPasswordMatches(password)) {
+    return res.status(401).json({ message: "Invalid scanner password." });
+  }
+
+  return next();
+}
+
+export async function verifyScannerPassword(req, res) {
+  const password = req.body?.password;
+
+  if (!scannerPasswordMatches(password)) {
+    return res.status(401).json({ message: "Invalid scanner password." });
+  }
+
+  return res.json({ ok: true });
+}
+
 export async function getAllCandidates(req, res) {
   try {
     const data = await fetchAllCandidates();

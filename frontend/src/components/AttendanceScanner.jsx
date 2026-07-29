@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { markAttendance, getAttendanceStats } from "../lib/api";
 
-export default function AttendanceScanner({ onClose }) {
+export default function AttendanceScanner({ adminBypass = false, onClose, scannerPassword }) {
   const scannerRef = useRef(null);
   const isScanningRef = useRef(false);
   const isSubmittingRef = useRef(false);
@@ -95,7 +95,7 @@ export default function AttendanceScanner({ onClose }) {
 
   async function handleClose() {
     await stopScanner();
-    onClose();
+    onClose?.();
   }
 
   async function handleScan(decodedText) {
@@ -107,7 +107,10 @@ export default function AttendanceScanner({ onClose }) {
 
     isSubmittingRef.current = true;
     try {
-      const response = await markAttendance(decodedText);
+      const response = await markAttendance(decodedText, {
+        adminBypass,
+        scannerPassword,
+      });
       const { candidate, alreadyPresent } = response;
 
       if (alreadyPresent) {
@@ -201,7 +204,10 @@ export default function AttendanceScanner({ onClose }) {
   useEffect(() => {
     async function loadStats() {
       try {
-        const stats = await getAttendanceStats();
+        const stats = await getAttendanceStats({
+          adminBypass,
+          scannerPassword,
+        });
         setTotalCandidates(stats.totalCandidates);
         setPresentCandidates(stats.presentCandidates);
       } catch (error) {
@@ -209,7 +215,7 @@ export default function AttendanceScanner({ onClose }) {
       }
     }
     loadStats();
-  }, []);
+  }, [adminBypass, scannerPassword]);
 
   useEffect(() => {
     const id = setTimeout(() => {
