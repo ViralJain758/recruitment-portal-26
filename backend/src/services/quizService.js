@@ -1,0 +1,479 @@
+import db from "../config/db.js";
+import crypto from "node:crypto";
+
+const QUESTION_COUNT = Math.max(
+  1,
+  Number.parseInt(process.env.QUIZ_QUESTION_COUNT || "15", 10),
+);
+
+function seededNumber(seed) {
+  let value = seed;
+  return () => {
+    value = (value * 1664525 + 1013904223) % 4294967296;
+    return value / 4294967296;
+  };
+}
+
+function paperSeed(slotDate, startTime) {
+  const hash = crypto
+    .createHash("sha256")
+    .update(`${slotDate}:${startTime}`)
+    .digest();
+
+  return hash.readUInt32BE(0);
+}
+
+function shuffleForPaper(rows, slotDate, startTime) {
+  const shuffled = [...rows];
+  const random = seededNumber(paperSeed(slotDate, startTime));
+
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled;
+}
+
+// Randomizes question order per candidate request. Unlike shuffleForPaper
+// (which deterministically picks the same set of questions for everyone
+// in a slot, keyed off the slot's date/time), this uses Math.random so
+// every candidate sees their own question order even within the same slot.
+function shuffleForCandidate(rows) {
+  const shuffled = [...rows];
+
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled;
+}
+
+export async function ensureQuizQuestionsTable() {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS quiz_questions (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      external_id          TEXT UNIQUE,
+      section              TEXT NOT NULL DEFAULT 'General',
+      question_text        TEXT NOT NULL,
+      image_url            TEXT,
+      options_json         TEXT NOT NULL,
+      correct_answer_index INTEGER NOT NULL,
+      display_order        INTEGER NOT NULL DEFAULT 0,
+      is_active            INTEGER NOT NULL DEFAULT 1,
+      created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  await db.execute(
+    "CREATE INDEX IF NOT EXISTS idx_quiz_questions_active_order ON quiz_questions(is_active, display_order, id)",
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS quiz_papers (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      slot_date   TEXT    NOT NULL,
+      start_time  TEXT    NOT NULL,
+      slot_day    INTEGER,
+      slot_number INTEGER,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(slot_date, start_time)
+    )
+  `);
+
+  await db.execute(
+    "CREATE INDEX IF NOT EXISTS idx_quiz_papers_schedule ON quiz_papers(slot_date, start_time)",
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS quiz_paper_questions (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      paper_id       INTEGER NOT NULL REFERENCES quiz_papers(id) ON DELETE CASCADE,
+      question_id    INTEGER NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+      question_order INTEGER NOT NULL,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(paper_id, question_id),
+      UNIQUE(paper_id, question_order)
+    )
+  `);
+
+  await db.execute(
+    "CREATE INDEX IF NOT EXISTS idx_quiz_paper_questions_paper ON quiz_paper_questions(paper_id, question_order)",
+  );
+}
+
+async function getCandidateSlotGroup(userId) {
+  const result = await db.execute({
+    sql: `SELECT s.slot_day, s.slot_number, s.slot_venue, d.slot_date, t.start_time
+          FROM candidate_profiles cp
+          JOIN candidate_status cs ON cs.candidate_id = cp.id
+          JOIN slots s ON s.id = cs.slot_id
+          LEFT JOIN slot_day_dates d ON d.day_number = s.slot_day
+          LEFT JOIN slot_time_schedules t ON t.slot_number = s.slot_number
+          WHERE cp.user_id = ?`,
+    args: [userId],
+  });
+
+  return result.rows[0] ?? null;
+}
+
+async function fetchPaperQuestionRows(paperId) {
+  const result = await db.execute({
+    sql: `SELECT q.id, q.external_id, q.section, q.question_text, q.image_url, q.options_json, q.correct_answer_index
+          FROM quiz_paper_questions pq
+          JOIN quiz_questions q ON q.id = pq.question_id
+          WHERE pq.paper_id = ?
+            AND q.is_active = 1
+          ORDER BY pq.question_order ASC`,
+    args: [paperId],
+  });
+
+  return result.rows;
+}
+
+async function ensureQuizPaper(slot) {
+  if (!slot.slot_date || !slot.start_time) {
+    throw new Error("Quiz slot date and start time must be configured before launch.");
+  }
+
+  await db.execute({
+    sql: `INSERT INTO quiz_papers (slot_date, start_time, slot_day, slot_number)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(slot_date, start_time) DO UPDATE SET
+            slot_day = excluded.slot_day,
+            slot_number = excluded.slot_number`,
+    args: [slot.slot_date, slot.start_time, slot.slot_day, slot.slot_number],
+  });
+
+  const paperResult = await db.execute({
+    sql: `SELECT id FROM quiz_papers WHERE slot_date = ? AND start_time = ?`,
+    args: [slot.slot_date, slot.start_time],
+  });
+  const paper = paperResult.rows[0];
+
+  if (!paper) {
+    throw new Error("Could not create quiz paper for this slot.");
+  }
+
+  const existingRows = await fetchPaperQuestionRows(paper.id);
+  if (existingRows.length > 0) return existingRows;
+
+  const activeResult = await db.execute({
+    sql: `SELECT id
+          FROM quiz_questions
+          WHERE is_active = 1
+          ORDER BY display_order ASC, id ASC`,
+    args: [],
+  });
+
+  const activeQuestions = activeResult.rows;
+  if (activeQuestions.length === 0) {
+    throw new Error("No active quiz questions are available in the database.");
+  }
+
+  const selectedQuestions = shuffleForPaper(
+    activeQuestions,
+    slot.slot_date,
+    slot.start_time,
+  ).slice(0, Math.min(QUESTION_COUNT, activeQuestions.length));
+
+  await db.batch(
+    selectedQuestions.map((question, index) => ({
+      sql: `INSERT OR IGNORE INTO quiz_paper_questions
+            (paper_id, question_id, question_order)
+            VALUES (?, ?, ?)`,
+      args: [paper.id, question.id, index + 1],
+    })),
+    "write",
+  );
+
+  return fetchPaperQuestionRows(paper.id);
+}
+
+function mapQuestionRows(resultRows) {
+  return resultRows.map((row) => {
+    const options = JSON.parse(row.options_json);
+
+    if (!Array.isArray(options) || options.length === 0) {
+      throw new Error(`Quiz question ${row.external_id || row.id} has invalid options.`);
+    }
+
+    return {
+      id: row.external_id || `db-${row.id}`,
+      section: row.section,
+      text: row.question_text,
+      imageUrl: row.image_url || "",
+      correctAnswerIndex: Number(row.correct_answer_index ?? 0),
+      options,
+    };
+  });
+}
+
+// Candidate-facing variant — MUST NOT leak the correct answer index. The
+// client only needs enough to render the question and record a selection.
+function mapQuestionRowsForCandidate(resultRows) {
+  return mapQuestionRows(resultRows).map(({ correctAnswerIndex: _drop, ...safeQuestion }) => safeQuestion);
+}
+
+export async function fetchQuizQuestionsForUser(userId) {
+  const quizRow = await db.execute({
+    sql: `SELECT cq.quiz_submitted_at
+          FROM candidate_quiz cq
+          JOIN candidate_profiles cp ON cp.id = cq.candidate_id
+          WHERE cp.user_id = ?`,
+    args: [userId],
+  });
+
+  if (quizRow.rows[0]?.quiz_submitted_at) {
+    throw new Error("This quiz has already been submitted.");
+  }
+
+  const slot = await getCandidateSlotGroup(userId);
+
+  if (!slot) {
+    throw new Error("No quiz slot is assigned to this candidate.");
+  }
+
+  const rows = await ensureQuizPaper(slot);
+
+  return {
+    slot: {
+      day: slot.slot_day,
+      number: slot.slot_number,
+      date: slot.slot_date,
+      time: slot.start_time,
+    },
+    questions: shuffleForCandidate(mapQuestionRowsForCandidate(rows)),
+  };
+}
+
+export async function submitQuizForUser(userId, responses = {}) {
+  const profileResult = await db.execute({
+    sql: `SELECT id FROM candidate_profiles WHERE user_id = ?`,
+    args: [userId],
+  });
+
+  const candidateId = profileResult.rows[0]?.id;
+  if (!candidateId) {
+    throw new Error("Candidate not found.");
+  }
+
+  const quizResult = await db.execute({
+    sql: `SELECT quiz_submitted_at FROM candidate_quiz WHERE candidate_id = ?`,
+    args: [candidateId],
+  });
+
+  if (quizResult.rows[0]?.quiz_submitted_at) {
+    throw new Error("This quiz has already been submitted.");
+  }
+
+  // Re-derive the candidate's own slot/paper server-side — never trust a
+  // "questions" array from the client, since it could be tampered with to
+  // include a forged answer key.
+  const slot = await getCandidateSlotGroup(userId);
+  if (!slot) {
+    throw new Error("No quiz slot is assigned to this candidate.");
+  }
+
+  const paperRows = await ensureQuizPaper(slot);
+  const canonicalQuestions = mapQuestionRows(paperRows); // includes correctAnswerIndex, server-side only
+
+  const responseMap = responses && typeof responses === "object" ? responses : {};
+
+  let score = 0;
+  canonicalQuestions.forEach((question) => {
+    const selectedAnswer = responseMap[question.id];
+    if (selectedAnswer !== undefined && Number(selectedAnswer) === question.correctAnswerIndex) {
+      score += 1;
+    }
+  });
+
+  await db.execute({
+    sql: `UPDATE candidate_quiz
+          SET quiz_attended = 1,
+              quiz_score = ?,
+              quiz_submitted_at = ?,
+              quiz_attempt_count = COALESCE(quiz_attempt_count, 0) + 1,
+              updated_at = datetime('now')
+          WHERE candidate_id = ?`,
+    args: [score, new Date().toISOString(), candidateId],
+  });
+
+  return {
+    score,
+    totalQuestions: canonicalQuestions.length,
+    submitted: true,
+  };
+}
+
+export async function fetchActiveQuizQuestions() {
+  const result = await db.execute({
+    sql: `SELECT id, external_id, section, question_text, image_url, options_json
+          FROM quiz_questions
+          WHERE is_active = 1
+          ORDER BY display_order ASC, id ASC`,
+    args: [],
+  });
+
+  return mapQuestionRows(result.rows);
+}
+
+function normalizeOptionInput(option) {
+  if (typeof option === "string") {
+    return { type: "text", value: option };
+  }
+
+  if (option && typeof option === "object") {
+    const optionType = String(option.type || option.kind || "").toLowerCase();
+
+    if (optionType === "image") {
+      return {
+        type: "image",
+        value: option.value ?? option.imageUrl ?? option.src ?? option.url ?? "",
+      };
+    }
+
+    return {
+      type: "text",
+      value: option.text ?? option.label ?? option.value ?? option.content ?? "",
+    };
+  }
+
+  return { type: "text", value: "" };
+}
+
+function parseOptions(options) {
+  if (Array.isArray(options)) {
+    return options
+      .map((option) => normalizeOptionInput(option))
+      .filter((option) => option.value !== "" && option.value !== null && option.value !== undefined);
+  }
+
+  if (typeof options !== "string") return [];
+
+  try {
+    const parsed = JSON.parse(options);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((option) => normalizeOptionInput(option))
+        .filter((option) => option.value !== "" && option.value !== null && option.value !== undefined);
+    }
+  } catch {
+    // fall through to newline splitting for legacy plain text options
+  }
+
+  return options
+    .split(/\r?\n/)
+    .map((option) => option.trim())
+    .filter(Boolean)
+    .map((option) => normalizeOptionInput(option));
+}
+
+function parseActiveFlag(value) {
+  if (value === undefined || value === null) return 1;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return value === 0 ? 0 : 1;
+  if (typeof value === "string") {
+    return ["0", "false", "inactive", "no"].includes(value.toLowerCase()) ? 0 : 1;
+  }
+  return value ? 1 : 0;
+}
+
+function normalizeQuestionInput(question, index) {
+  const options = parseOptions(question.options ?? question.options_json);
+  const correctAnswerIndex = Number(
+    question.correct_answer_index ?? question.correctAnswerIndex,
+  );
+  const displayOrder = Number.parseInt(
+    question.display_order ?? question.displayOrder ?? index + 1,
+    10,
+  );
+
+  if (!question.question_text && !question.text) {
+    throw new Error(`Question ${index + 1} is missing question text.`);
+  }
+
+  if (options.length < 2) {
+    throw new Error(`Question ${index + 1} must have at least two options.`);
+  }
+
+  if (
+    !Number.isInteger(correctAnswerIndex) ||
+    correctAnswerIndex < 0 ||
+    correctAnswerIndex >= options.length
+  ) {
+    throw new Error(`Question ${index + 1} has an invalid correct answer index.`);
+  }
+
+  return {
+    externalId:
+      question.external_id ||
+      question.externalId ||
+      `question-${Date.now()}-${index + 1}`,
+    section: question.section || "General",
+    questionText: question.question_text || question.text,
+    imageUrl: question.image_url || question.imageUrl || null,
+    optionsJson: JSON.stringify(options),
+    correctAnswerIndex,
+    displayOrder: Number.isInteger(displayOrder) ? displayOrder : index + 1,
+    isActive: parseActiveFlag(question.is_active ?? question.isActive),
+  };
+}
+
+export async function listQuizQuestionBank() {
+  const result = await db.execute({
+    sql: `SELECT id, external_id, section, question_text, image_url, options_json,
+                 correct_answer_index, display_order, is_active, created_at, updated_at
+          FROM quiz_questions
+          ORDER BY display_order ASC, id ASC`,
+    args: [],
+  });
+
+  return result.rows.map((row) => ({
+    ...row,
+    options: JSON.parse(row.options_json),
+  }));
+}
+
+export async function upsertQuizQuestionBank(questions) {
+  if (!Array.isArray(questions) || questions.length === 0) {
+    throw new Error("Provide at least one question.");
+  }
+
+  const rows = questions.map(normalizeQuestionInput);
+
+  await db.batch(
+    rows.map((question) => ({
+      sql: `INSERT INTO quiz_questions
+            (external_id, section, question_text, image_url, options_json, correct_answer_index, display_order, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(external_id) DO UPDATE SET
+              section = excluded.section,
+              question_text = excluded.question_text,
+              image_url = excluded.image_url,
+              options_json = excluded.options_json,
+              correct_answer_index = excluded.correct_answer_index,
+              display_order = excluded.display_order,
+              is_active = excluded.is_active,
+              updated_at = datetime('now')`,
+      args: [
+        question.externalId,
+        question.section,
+        question.questionText,
+        question.imageUrl,
+        question.optionsJson,
+        question.correctAnswerIndex,
+        question.displayOrder,
+        question.isActive,
+      ],
+    })),
+    "write",
+  );
+
+  await db.execute("DELETE FROM quiz_paper_questions");
+  await db.execute("DELETE FROM quiz_papers");
+
+  return listQuizQuestionBank();
+}

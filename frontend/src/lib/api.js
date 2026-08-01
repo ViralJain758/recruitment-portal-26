@@ -7,6 +7,7 @@ async function request(path, options = {}) {
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...requestOptions,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(headers || {}),
@@ -29,6 +30,13 @@ export function signup(payload) {
   });
 }
 
+export function verifySignupOtp(payload) {
+  return request("/api/otp/verify-and-complete", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function login(payload) {
   return request("/api/auth/login", {
     method: "POST",
@@ -36,10 +44,68 @@ export function login(payload) {
   });
 }
 
-export function refreshSession(payload) {
+export function getCurrentUser(token) {
+  return request("/api/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function verifyAdminOtp(payload) {
+  return request("/api/auth/admin-verify-otp", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function refreshSession(payload = {}) {
   return request("/api/auth/refresh", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function logoutSession() {
+  return request("/api/auth/logout", {
+    method: "POST",
+  });
+}
+
+export function forgotPassword(payload) {
+  return request("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resetPassword(payload) {
+  return request("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getQuizQuestions(token) {
+  return request("/api/quiz/questions", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function submitQuiz(payload, token) {
+  return request("/api/quiz/submit", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getQuizQuestionBank() {
+  return request("/api/admin/quiz/questions");
+}
+
+export function saveQuizQuestionBank(questions) {
+  return request("/api/admin/quiz/questions", {
+    method: "PUT",
+    body: JSON.stringify({ questions }),
   });
 }
 
@@ -77,6 +143,12 @@ export function updateCandidateAttendance(id, present) {
   });
 }
 
+export function resetCandidateQuiz(id) {
+  return request(`/api/admin/candidates/${id}/reset-quiz`, {
+    method: "POST",
+  });
+}
+
 export function lockCandidateForm(id, locked) {
   return request(`/api/admin/candidates/${id}/lock`, {
     method: "PATCH",
@@ -109,7 +181,10 @@ export function setGlobalLock(locked) {
 }
 
 export async function getDashboard(signal) {
-  const response = await fetch(`${apiBaseUrl}/dashboard`, { signal });
+  const response = await fetch(`${apiBaseUrl}/dashboard`, {
+    credentials: "include",
+    signal,
+  });
   const text = await response.text();
 
   if (!response.ok) {
@@ -119,15 +194,33 @@ export async function getDashboard(signal) {
   return text || "Dashboard";
 }
 
-export function markAttendance(qrToken) {
+export function verifyScannerPassword(password) {
+  return request("/api/admin/scanner/verify-password", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
+function scannerAccessHeaders({ adminBypass, scannerPassword } = {}) {
+  if (adminBypass || !scannerPassword) {
+    return {};
+  }
+
+  return { "X-Scanner-Password": scannerPassword };
+}
+
+export function markAttendance(qrToken, scannerAccess) {
   return request("/api/admin/attendance", {
     method: "POST",
+    headers: scannerAccessHeaders(scannerAccess),
     body: JSON.stringify({ qrToken }),
   });
 }
 
-export function getAttendanceStats() {
-  return request("/api/admin/attendance/stats");
+export function getAttendanceStats(scannerAccess) {
+  return request("/api/admin/attendance/stats", {
+    headers: scannerAccessHeaders(scannerAccess),
+  });
 }
 
 // Slot distribution — admin only
@@ -137,6 +230,13 @@ export function distributeSlots() {
 
 export function getSlotSummary() {
   return request("/api/admin/slots/summary");
+}
+
+export function setSlotActivation(slotId, active) {
+  return request(`/api/admin/slots/${slotId}/active`, {
+    method: "PATCH",
+    body: JSON.stringify({ active }),
+  });
 }
 
 export function clearAllSlots() {

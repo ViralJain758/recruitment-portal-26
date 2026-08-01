@@ -37,7 +37,7 @@ export default function CandidateDrawer({
 
   if (!candidate) return null;
 
-  const isPresent = candidate.quiz_attended === true;
+  const isPresent = Boolean(candidate.quiz_attended);
   const isLocked = candidate.form_locked === true;
   const isIndividuallyUnlocked = candidate.individual_unlock === true;
   const resolvedSlot = resolveSlot(
@@ -167,9 +167,16 @@ export default function CandidateDrawer({
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
               <path d="M7 11V7a5 5 0 0 1 9.9-1" />
             </svg>
-            <p style={{ fontSize: "0.82rem", color: "#15803d", margin: 0, lineHeight: 1.45 }}>
+            <p
+              style={{
+                fontSize: "0.82rem",
+                color: "#15803d",
+                margin: 0,
+                lineHeight: 1.45,
+              }}
+            >
               This candidate has been individually unlocked and can edit their
-              form despite the global lock being active.
+              form despite all forms are locked.
             </p>
           </div>
           <button
@@ -180,7 +187,7 @@ export default function CandidateDrawer({
                 {
                   variant: "danger",
                   title: "Revoke Individual Unlock?",
-                  message: `${candidate.full_name} will lose their individual override and be blocked by the global lock again.`,
+                  message: `${candidate.full_name} will lose their individual override and be locked again.`,
                   confirmLabel: "Revoke Unlock",
                 },
                 () => onIndividualUnlock(candidate.id, false),
@@ -236,9 +243,16 @@ export default function CandidateDrawer({
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
-          <p style={{ fontSize: "0.82rem", color: "#b91c1c", margin: 0, lineHeight: 1.45 }}>
-            Global lock is active — this candidate cannot edit their form. You
-            can grant them an individual exception to override the global lock.
+          <p
+            style={{
+              fontSize: "0.82rem",
+              color: "#b91c1c",
+              margin: 0,
+              lineHeight: 1.45,
+            }}
+          >
+            All forms are locked — the candidates cannot edit their form. You
+            can grant them an individual exception to override the lock.
           </p>
         </div>
         <button
@@ -249,7 +263,7 @@ export default function CandidateDrawer({
               {
                 variant: "warning",
                 title: "Unlock Form for This Candidate?",
-                message: `${candidate.full_name} will be able to edit their application even though the global lock is active. You can revoke this at any time.`,
+                message: `${candidate.full_name} will be able to edit their application even though all forms are locked. You can revoke this at any time.`,
                 confirmLabel: "Unlock Individually",
               },
               () => onIndividualUnlock(candidate.id, true),

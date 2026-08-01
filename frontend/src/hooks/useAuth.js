@@ -1,51 +1,10 @@
-import { useEffect, useState } from "react";
-import { refreshSession } from "../lib/api";
-
-const AUTH_STORAGE_KEY = "recruitmentPortalAuth";
-
-function hasValidSession(session) {
-  return Boolean(session?.accessToken);
-}
-
-function readStoredAuth() {
-  try {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-
-    if (!stored) {
-      return {
-        authSession: null,
-        candidateProfile: null,
-      };
-    }
-
-    const parsed = JSON.parse(stored);
-
-    return {
-      authSession: parsed.authSession || null,
-      candidateProfile: parsed.candidateProfile || null,
-    };
-  } catch {
-    return {
-      authSession: null,
-      candidateProfile: null,
-    };
-  }
-}
-
-function persistAuth(authSession, candidateProfile) {
-  if (!hasValidSession(authSession)) {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    return;
-  }
-
-  localStorage.setItem(
-    AUTH_STORAGE_KEY,
-    JSON.stringify({
-      authSession,
-      candidateProfile,
-    }),
-  );
-}
+import { useEffect, useRef, useState } from "react";
+import { getCurrentUser, logoutSession, refreshSession } from "../lib/api";
+import {
+  hasValidSession,
+  persistAuth,
+  readStoredAuth,
+} from "../utils/authStorage";
 
 function buildProfile(profile, user, session, existing = {}) {
   return {
@@ -59,24 +18,46 @@ function buildProfile(profile, user, session, existing = {}) {
 
 export function useAuth() {
   const [storedAuth] = useState(() => readStoredAuth());
+  const restoreStarted = useRef(false);
   const [authSession, setAuthSession] = useState(storedAuth.authSession);
   const [candidateProfile, setCandidateProfile] = useState(
     storedAuth.candidateProfile,
   );
-  const [authReady, setAuthReady] = useState(
-    !hasValidSession(storedAuth.authSession),
-  );
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     async function restoreSession() {
-      if (!hasValidSession(storedAuth.authSession)) {
+      if (restoreStarted.current) {
+        return;
+      }
+
+      restoreStarted.current = true;
+
+      if (hasValidSession(storedAuth.authSession)) {
+        try {
+          const restored = await getCurrentUser(
+            storedAuth.authSession.accessToken,
+          );
+          const profile = buildProfile(
+            restored.profile,
+            restored.user,
+            storedAuth.authSession,
+            storedAuth.candidateProfile,
+          );
+
+          setAuthSession(storedAuth.authSession);
+          setCandidateProfile(profile);
+          persistAuth(storedAuth.authSession, profile);
+        } catch {
+          setAuthSession(storedAuth.authSession);
+          setCandidateProfile(storedAuth.candidateProfile);
+        }
+        setAuthReady(true);
         return;
       }
 
       try {
-        const restored = await refreshSession({
-          refreshToken: storedAuth.authSession.refreshToken,
-        });
+        const restored = await refreshSession();
 
         const profile = buildProfile(
           restored.profile,
@@ -90,10 +71,12 @@ export function useAuth() {
 
         persistAuth(restored.session, profile);
       } catch {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
+        if (!hasValidSession(storedAuth.authSession)) {
+          persistAuth(null, null);
 
-        setAuthSession(null);
-        setCandidateProfile(null);
+          setAuthSession(null);
+          setCandidateProfile(null);
+        }
       } finally {
         setAuthReady(true);
       }
@@ -137,7 +120,8 @@ export function useAuth() {
   };
 
   const logout = () => {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    logoutSession().catch(() => {});
+    persistAuth(null, null);
 
     setAuthSession(null);
     setCandidateProfile(null);

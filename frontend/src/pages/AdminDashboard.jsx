@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import "./AdminDashboard.css";
 
 import mlscLogo from "../assets/MLSC-logo.png";
@@ -6,14 +7,15 @@ import mlscLogo from "../assets/MLSC-logo.png";
 import CandidateCard from "../components/CandidateCard";
 import CandidateDrawer from "../components/CandidateDrawer";
 import StatsGrid from "../components/StatsGrid";
-import AttendanceScanner from "../components/AttendanceScanner";
 import SlotDistribution from "../components/SlotDistribution";
 
 import { useCandidates } from "../hooks/useCandidates";
 import { useCandidateFilters } from "../hooks/useCandidateFilters";
+import { logoutSession } from "../lib/api";
 import { calculateStats } from "../utils/candidateHelpers";
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [selectedCandidate, setSelectedCandidate] = useState(null);
 
   const {
@@ -22,6 +24,7 @@ export default function AdminDashboard() {
     fetchCandidates,
     updateStatus,
     updateAttendance,
+    resetQuiz,
     removeCandidate,
     toggleLock,
     individualUnlock,
@@ -32,6 +35,7 @@ export default function AdminDashboard() {
     slotLoading,
     runDistributeSlots,
     runClearSlots,
+    toggleSlotActivation,
     slotSchedules,
     schedulesLoading,
     saveDayDate,
@@ -42,8 +46,6 @@ export default function AdminDashboard() {
     removeSlot,
   } = useCandidates();
 
-  const [showScanner, setShowScanner] = useState(false);
-
   const {
     search,
     setSearch,
@@ -51,6 +53,8 @@ export default function AdminDashboard() {
     setStatusFilter,
     deptSort,
     setDeptSort,
+    slotSort,
+    setSlotSort,
     filteredCandidates,
   } = useCandidateFilters(candidates);
 
@@ -64,13 +68,37 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  const logout = () => {
+  useEffect(() => {
+    const hadDarkTheme = document.documentElement.classList.contains("dark");
+    document.documentElement.classList.remove("dark");
+    document.body.classList.add("admin-light-mode");
+
+    return () => {
+      document.body.classList.remove("admin-light-mode");
+      if (hadDarkTheme) {
+        document.documentElement.classList.add("dark");
+      }
+    };
+  }, []);
+
+  const logout = async () => {
+    await logoutSession().catch(() => {});
     localStorage.removeItem("isAdmin");
     window.location.reload();
   };
 
+  const handleResetCandidateQuiz = async (candidate) => {
+    const confirmed = window.confirm(
+      `Reset quiz for ${candidate.full_name || "this candidate"}? This will clear the previous score and allow them to retake the test.`,
+    );
+
+    if (!confirmed) return;
+
+    await resetQuiz(candidate.id);
+  };
+
   return (
-    <div className="dashboard">
+    <div className="dashboard admin-dashboard-light">
       {/* ── Header ── */}
       <header className="header">
         <div className="header-brand">
@@ -113,8 +141,8 @@ export default function AdminDashboard() {
               disabled={globalLockLoading}
               title={
                 globalLocked
-                  ? "Click to unlock registrations globally"
-                  : "Click to lock all registrations globally"
+                  ? "Click to unlock all registrations"
+                  : "Click to lock all registrations"
               }
             >
               {globalLocked ? (
@@ -153,7 +181,7 @@ export default function AdminDashboard() {
             </button>
             <button
               className="btn btn--secondary"
-              onClick={() => setShowScanner(true)}
+              onClick={() => navigate("/scanner")}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -224,23 +252,8 @@ export default function AdminDashboard() {
 
       {/* ── Global lock banner ── */}
       {globalLocked && (
-        <div
-          style={{
-            margin: "0 0 16px",
-            padding: "12px 20px",
-            background: "#fef2f2",
-            border: "1px solid #fca5a5",
-            borderRadius: 10,
-            color: "#b91c1c",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+        <div className="lock-banner">
           <svg
-            width="18"
-            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -251,8 +264,7 @@ export default function AdminDashboard() {
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
-          Global Form Lock is active — all candidate forms are locked and new
-          sign-ups are disabled.
+          All candidate forms are locked and new sign-ups are disabled.
         </div>
       )}
 
@@ -263,6 +275,7 @@ export default function AdminDashboard() {
         totalCandidates={candidates.length}
         onDistribute={runDistributeSlots}
         onClear={runClearSlots}
+        onToggleSlotActivation={toggleSlotActivation}
         schedules={slotSchedules}
         schedulesLoading={schedulesLoading}
         onSaveDayDate={saveDayDate}
@@ -314,6 +327,16 @@ export default function AdminDashboard() {
             <option value="Content">Content</option>
             <option value="Media">Media</option>
           </select>
+          <select
+            value={slotSort}
+            onChange={(e) => setSlotSort(e.target.value)}
+            aria-label="Filter by slot"
+            style={{ marginLeft: 8 }}
+          >
+            <option value="All">All Slots</option>
+            <option value="Assigned">Assigned Slots</option>
+            <option value="Unassigned">Unassigned Slots</option>
+          </select>
         </div>
       </div>
 
@@ -336,6 +359,7 @@ export default function AdminDashboard() {
                 onSelect={setSelectedCandidate}
                 slotSummary={slotSummary}
                 slotSchedules={slotSchedules}
+                onResetQuiz={handleResetCandidateQuiz}
               />
             ))
           ) : (
@@ -359,13 +383,14 @@ export default function AdminDashboard() {
                   ? `No results for "${search}" — try a different name or email.`
                   : "No candidates match the selected filter."}
               </p>
-              {(search || statusFilter !== "All" || deptSort !== "All") && (
+              {(search || statusFilter !== "All" || deptSort !== "All" || slotSort !== "All") && (
                 <button
                   className="btn btn--ghost empty-reset"
                   onClick={() => {
                     setSearch("");
                     setStatusFilter("All");
                     setDeptSort("All");
+                    setSlotSort("All");
                   }}
                 >
                   Clear filters
@@ -404,9 +429,6 @@ export default function AdminDashboard() {
         }}
       />
 
-      {showScanner && (
-        <AttendanceScanner onClose={() => setShowScanner(false)} />
-      )}
     </div>
   );
 }
