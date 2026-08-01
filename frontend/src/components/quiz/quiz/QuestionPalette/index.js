@@ -1,0 +1,1 @@
+export { QuestionPalette } from "./QuestionPalette";

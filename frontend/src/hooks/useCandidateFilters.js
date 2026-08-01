@@ -2,10 +2,16 @@ import { useMemo, useState } from "react";
 
 const DEPT_ORDER = ["Tech", "Design", "Marketing", "Content", "Media"];
 
+function getSlotSortValue(candidate) {
+  if (!candidate?.slot_id) return Number.MAX_SAFE_INTEGER;
+  return Number(candidate.slot_id);
+}
+
 export function useCandidateFilters(candidates) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [deptSort, setDeptSort] = useState("All");
+  const [slotSort, setSlotSort] = useState("All");
 
   const filteredCandidates = useMemo(() => {
     const filtered = candidates.filter((candidate) => {
@@ -23,11 +29,20 @@ export function useCandidateFilters(candidates) {
         candidate.primary_department === deptSort ||
         candidate.secondary_department === deptSort;
 
-      return matchesSearch && matchesStatus && matchesDept;
+      const matchesSlot = slotSort === "All" ||
+        (slotSort === "Assigned" ? Boolean(candidate.slot_id) : !candidate.slot_id);
+
+      return matchesSearch && matchesStatus && matchesDept && matchesSlot;
     });
 
-    // Sort alphabetically within the filtered set, grouped by department order
-    if (deptSort === "All") {
+    if (slotSort !== "All") {
+      filtered.sort((a, b) => {
+        const aAssigned = Boolean(a.slot_id);
+        const bAssigned = Boolean(b.slot_id);
+        if (aAssigned !== bAssigned) return aAssigned ? -1 : 1;
+        return getSlotSortValue(a) - getSlotSortValue(b);
+      });
+    } else if (deptSort === "All") {
       filtered.sort((a, b) => {
         const ai = DEPT_ORDER.indexOf(a.primary_department);
         const bi = DEPT_ORDER.indexOf(b.primary_department);
@@ -36,7 +51,6 @@ export function useCandidateFilters(candidates) {
         return (a.full_name ?? "").localeCompare(b.full_name ?? "");
       });
     } else {
-      // Primary department matches come before secondary matches, then alphabetically
       filtered.sort((a, b) => {
         const aPrimary = a.primary_department === deptSort ? 0 : 1;
         const bPrimary = b.primary_department === deptSort ? 0 : 1;
@@ -46,7 +60,7 @@ export function useCandidateFilters(candidates) {
     }
 
     return filtered;
-  }, [candidates, search, statusFilter, deptSort]);
+  }, [candidates, search, statusFilter, deptSort, slotSort]);
 
   return {
     search,
@@ -55,6 +69,8 @@ export function useCandidateFilters(candidates) {
     setStatusFilter,
     deptSort,
     setDeptSort,
+    slotSort,
+    setSlotSort,
     filteredCandidates,
   };
 }

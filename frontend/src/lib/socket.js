@@ -6,4 +6,5 @@ const socketUrl = (
 
 export const adminSocket = io(socketUrl, {
   autoConnect: false,
+  withCredentials: true,
 });

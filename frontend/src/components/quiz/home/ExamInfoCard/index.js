@@ -1,0 +1,1 @@
+export { ExamInfoCard } from "./ExamInfoCard";
