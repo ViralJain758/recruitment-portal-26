@@ -47,6 +47,7 @@ export const ExamProvider = ({ children }) => {
   });
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [securityViolationType, setSecurityViolationType] = useState("");
+  const [cameraAccess, setCameraAccess] = useState(false);
 
   // Computed question helper maps cleanly to the active DB paper.
   const currentQuestion = questions[currentQuestionIndex] || null;
@@ -208,6 +209,8 @@ export const ExamProvider = ({ children }) => {
         resetExamData,
         questions,
         currentQuestion,
+        cameraAccess,
+        setCameraAccess,
       }}
     >
       {children}

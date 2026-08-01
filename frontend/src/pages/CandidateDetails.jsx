@@ -222,7 +222,7 @@ export default function CandidateDetails({
 
         <FormField
           id="other-societies"
-          label="Which other Societies you are currently in Thapar except MLSC?"
+          label="Which other Societies are you enrolling or are currently in except MLSC?"
           name="otherSocieties"
           onChange={handleChange}
           placeholder="List other societies"

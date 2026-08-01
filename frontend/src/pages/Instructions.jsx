@@ -1,25 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Award, Check, ShieldAlert, UserCheck, X } from 'lucide-react';
-import { useExam } from '../context/ExamContext';
-import { PageContainer } from '../components/quiz/layout/PageContainer';
-import { Checkbox } from '../components/quiz/common/Checkbox';
-import { Button } from '../components/quiz/common/Button';
-import { Card } from '../components/quiz/common/Card';
-import { ThemeToggle } from '../components/quiz/common/ThemeToggle';
-import { getQuizQuestions } from '../lib/api';
-import mlsaLogo from '../assets/MLSC-logo.png';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Award, Check, ShieldAlert, UserCheck, X } from "lucide-react";
+import { useExam } from "../context/ExamContext";
+import { PageContainer } from "../components/quiz/layout/PageContainer";
+import { Checkbox } from "../components/quiz/common/Checkbox";
+import { Button } from "../components/quiz/common/Button";
+import { Card } from "../components/quiz/common/Card";
+import { ThemeToggle } from "../components/quiz/common/ThemeToggle";
+import { getQuizQuestions } from "../lib/api";
+import mlsaLogo from "../assets/MLSC-logo.png";
 
 export const Instructions = () => {
   const { candidate, setExamStarted, questions } = useExam();
+  const { cameraAccess, setCameraAccess } = useExam();
   const navigate = useNavigate();
   const [agreed, setAgreed] = useState(false);
   const [isStartingExam, setIsStartingExam] = useState(false);
-  const [startError, setStartError] = useState('');
+  const [startError, setStartError] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+  const [requestingCamera, setRequestingCamera] = useState(false);
 
   useEffect(() => {
-    if (!candidate) navigate('/');
+    if (!candidate) navigate("/");
   }, [candidate, navigate]);
+
+  useEffect(() => {
+    try {
+      const nav = navigator;
+      const mobile =
+        (nav && nav.userAgentData && nav.userAgentData.mobile) ||
+        /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(
+          navigator.userAgent || "",
+        );
+      setIsMobile(!!mobile);
+    } catch (err) {
+      setIsMobile(false);
+    }
+  }, []);
 
   if (!candidate) return null;
 
@@ -27,36 +44,81 @@ export const Instructions = () => {
     const element = document.documentElement;
     try {
       if (element.requestFullscreen) await element.requestFullscreen();
-      else if (element.webkitRequestFullscreen) await element.webkitRequestFullscreen();
-      else if (element.mozRequestFullScreen) await element.mozRequestFullScreen();
+      else if (element.webkitRequestFullscreen)
+        await element.webkitRequestFullscreen();
+      else if (element.mozRequestFullScreen)
+        await element.mozRequestFullScreen();
       else if (element.msRequestFullscreen) await element.msRequestFullscreen();
     } catch (err) {
-      console.warn('Fullscreen request blocked:', err);
+      console.warn("Fullscreen request blocked:", err);
     }
   };
 
   const handleStartExam = async () => {
     setIsStartingExam(true);
-    setStartError('');
+    setStartError("");
 
     try {
+      if (isMobile) {
+        throw new Error(
+          "Quiz is not supported on mobile devices. Please open this portal on a desktop or laptop with a webcam.",
+        );
+      }
       if (!candidate.accessToken) {
-        throw new Error('Your session could not be verified. Please sign in again.');
+        throw new Error(
+          "Your session could not be verified. Please sign in again.",
+        );
+      }
+
+      // Ensure camera permission is granted before starting
+      if (!cameraAccess) {
+        // Attempt to request once more on user gesture (start button)
+        try {
+          await requestCameraPermission();
+        } catch (err) {
+          throw new Error(
+            "Camera access is required to start the quiz. Please allow camera permission.",
+          );
+        }
       }
 
       const data = await getQuizQuestions(candidate.accessToken);
 
       if (!data.questions?.length) {
-        throw new Error('No quiz questions are available right now.');
+        throw new Error("No quiz questions are available right now.");
       }
 
       await launchFullscreen();
       setExamStarted(data.questions);
-      navigate('/quiz');
+      navigate("/quiz");
     } catch (error) {
-      setStartError(error.message || 'Could not start the quiz.');
+      setStartError(error.message || "Could not start the quiz.");
     } finally {
       setIsStartingExam(false);
+    }
+  };
+
+  const requestCameraPermission = async () => {
+    if (
+      !navigator ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+      throw new Error("Camera API not available in this browser.");
+    }
+
+    setRequestingCamera(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // stop tracks immediately; we only needed permission
+      stream.getTracks().forEach((t) => t.stop());
+      setCameraAccess(true);
+      setRequestingCamera(false);
+      return true;
+    } catch (err) {
+      setCameraAccess(false);
+      setRequestingCamera(false);
+      throw err;
     }
   };
 
@@ -77,19 +139,26 @@ export const Instructions = () => {
               Exam Instructions
             </h1>
             <p className="text-sm text-[#64748B] dark:text-slate-400 mt-1 max-w-xl">
-              Read the ground rules once before entering the locked quiz environment.
+              Read the ground rules once before entering the locked quiz
+              environment.
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <div className="flex flex-1 sm:flex-none divide-x divide-[#CBD5E1] dark:divide-slate-700 border border-[#CBD5E1] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-400">
-          <div className="px-3 py-2">
-            Questions <span className="ml-2 font-mono text-[#0F172A] dark:text-slate-50">{questions?.length || 15}</span>
-          </div>
-          <div className="px-3 py-2">
-            Time <span className="ml-2 font-mono text-[#0F172A] dark:text-slate-50">30m</span>
-          </div>
+            <div className="px-3 py-2">
+              Questions{" "}
+              <span className="ml-2 font-mono text-[#0F172A] dark:text-slate-50">
+                {questions?.length || 15}
+              </span>
+            </div>
+            <div className="px-3 py-2">
+              Time{" "}
+              <span className="ml-2 font-mono text-[#0F172A] dark:text-slate-50">
+                30m
+              </span>
+            </div>
           </div>
           <ThemeToggle />
         </div>
@@ -107,24 +176,32 @@ export const Instructions = () => {
                 <h2 className="m-0 text-base sm:text-lg font-bold tracking-tight text-[#0F172A] dark:text-slate-50">
                   Security rules
                 </h2>
-                <p className="text-xs text-[#64748B] dark:text-slate-400 mt-0.5">These are enforced during the quiz.</p>
+                <p className="text-xs text-[#64748B] dark:text-slate-400 mt-0.5">
+                  These are enforced during the quiz.
+                </p>
               </div>
             </div>
             <ul className="px-5 sm:px-6 pb-5 space-y-3 text-sm text-[#475569] dark:text-slate-300 leading-relaxed">
               <li className="flex items-start gap-3">
                 <X className="w-4 h-4 text-red-500 mt-1 shrink-0" />
                 <span>
-                  Fullscreen mode is required. Exiting or minimizing the page records a warning.
+                  Fullscreen mode is required. Exiting or minimizing the page
+                  records a warning.
                 </span>
               </li>
               <li className="flex items-start gap-3">
                 <X className="w-4 h-4 text-red-500 mt-1 shrink-0" />
-                <span>Tab switches, window blur, and context menu actions are monitored.</span>
+                <span>
+                  Tab switches, window blur, and context menu actions are
+                  monitored.
+                </span>
               </li>
               <li className="flex items-start gap-3">
                 <X className="w-4 h-4 text-red-500 mt-1 shrink-0" />
                 <span>
-                  At <span className="text-red-700 font-semibold">3 warnings</span>, the quiz is submitted automatically.
+                  At{" "}
+                  <span className="text-red-700 font-semibold">3 warnings</span>
+                  , the quiz is submitted automatically.
                 </span>
               </li>
             </ul>
@@ -140,25 +217,38 @@ export const Instructions = () => {
                 <h2 className="m-0 text-base sm:text-lg font-bold tracking-tight text-[#0F172A] dark:text-slate-50">
                   Scoring
                 </h2>
-                <p className="text-xs text-[#64748B] dark:text-slate-400 mt-0.5">Your final score follows this marking pattern.</p>
+                <p className="text-xs text-[#64748B] dark:text-slate-400 mt-0.5">
+                  Your final score follows this marking pattern.
+                </p>
               </div>
             </div>
             <ul className="px-5 sm:px-6 pb-5 space-y-3 text-sm text-[#475569] dark:text-slate-300 leading-relaxed">
               <li className="flex items-start gap-3">
                 <Check className="w-4 h-4 text-emerald-500 mt-1 shrink-0" />
                 <span>
-                  Correct answer: <span className="text-emerald-700 font-semibold">+4 marks</span>.
+                  Correct answer:{" "}
+                  <span className="text-emerald-700 font-semibold">
+                    +4 marks
+                  </span>
+                  .
                 </span>
               </li>
               <li className="flex items-start gap-3">
                 <Check className="w-4 h-4 text-emerald-500 mt-1 shrink-0" />
                 <span>
-                  Incorrect answer: <span className="text-emerald-700 font-semibold">no negative marking</span>.
+                  Incorrect answer:{" "}
+                  <span className="text-emerald-700 font-semibold">
+                    no negative marking
+                  </span>
+                  .
                 </span>
               </li>
               <li className="flex items-start gap-3">
                 <Check className="w-4 h-4 text-emerald-500 mt-1 shrink-0" />
-                <span>Unanswered questions count as <span className="text-[#64748B] font-semibold">0 marks</span>.</span>
+                <span>
+                  Unanswered questions count as{" "}
+                  <span className="text-[#64748B] font-semibold">0 marks</span>.
+                </span>
               </li>
             </ul>
           </Card>
@@ -171,26 +261,42 @@ export const Instructions = () => {
                 <UserCheck className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="m-0 text-sm font-bold text-[#0F172A] dark:text-slate-50 tracking-tight">Candidate</h2>
-                <p className="text-[10px] text-[#64748B] dark:text-slate-400 font-semibold uppercase tracking-wider">Verified</p>
+                <h2 className="m-0 text-sm font-bold text-[#0F172A] dark:text-slate-50 tracking-tight">
+                  Candidate
+                </h2>
+                <p className="text-[10px] text-[#64748B] dark:text-slate-400 font-semibold uppercase tracking-wider">
+                  Verified
+                </p>
               </div>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">Name</label>
-                <p className="text-base font-bold text-[#111827] dark:text-slate-50 mt-0.5">{candidate.fullName}</p>
+                <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">
+                  Name
+                </label>
+                <p className="text-base font-bold text-[#111827] dark:text-slate-50 mt-0.5">
+                  {candidate.fullName}
+                </p>
               </div>
 
               <div>
-                <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">Enrollment</label>
-                <p className="text-base font-bold text-[#0067B8] dark:text-blue-300 font-mono mt-0.5 tracking-tight">{candidate.enrollmentNumber}</p>
+                <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">
+                  Enrollment
+                </label>
+                <p className="text-base font-bold text-[#0067B8] dark:text-blue-300 font-mono mt-0.5 tracking-tight">
+                  {candidate.enrollmentNumber}
+                </p>
               </div>
 
               {candidate.college && (
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">College</label>
-                  <p className="text-xs font-semibold text-[#4B5563] dark:text-slate-300 mt-0.5 leading-relaxed">{candidate.college}</p>
+                  <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">
+                    College
+                  </label>
+                  <p className="text-xs font-semibold text-[#4B5563] dark:text-slate-300 mt-0.5 leading-relaxed">
+                    {candidate.college}
+                  </p>
                 </div>
               )}
             </div>
@@ -211,14 +317,39 @@ export const Instructions = () => {
           className="flex-1"
         />
 
-        <Button
-          variant="primary"
-          disabled={!agreed || isStartingExam}
-          onClick={handleStartExam}
-          className="w-full sm:w-auto px-7 py-3 text-sm font-bold tracking-wide text-white bg-[#0067B8] hover:bg-[#005A9E] rounded-lg border border-blue-500/10 shadow-lg shadow-blue-900/10 transition-all shrink-0"
-        >
-          {isStartingExam ? 'Preparing Quiz...' : 'Launch Portal Session'}
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:block text-xs text-[#475569] dark:text-slate-300">
+            Camera permission is required to validate your session.
+          </div>
+
+          <Button
+            variant="secondary"
+            onClick={requestCameraPermission}
+            disabled={requestingCamera || cameraAccess}
+            className="px-3 py-2 text-sm"
+          >
+            {requestingCamera
+              ? "Requesting..."
+              : cameraAccess
+                ? "Camera Allowed"
+                : "Allow Camera"}
+          </Button>
+
+          {isMobile && (
+            <p className="text-sm text-red-700">
+              Quiz not supported on mobile devices.
+            </p>
+          )}
+
+          <Button
+            variant="primary"
+            disabled={!agreed || isStartingExam || isMobile || !cameraAccess}
+            onClick={handleStartExam}
+            className="w-full sm:w-auto px-7 py-3 text-sm font-bold tracking-wide text-white bg-[#0067B8] hover:bg-[#005A9E] rounded-lg border border-blue-500/10 shadow-lg shadow-blue-900/10 transition-all shrink-0"
+          >
+            {isStartingExam ? "Preparing Quiz..." : "Launch Portal Session"}
+          </Button>
+        </div>
       </Card>
       {startError && (
         <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
