@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { refreshSession } from "../lib/api";
+import { getCurrentUser, logoutSession, refreshSession } from "../lib/api";
 import {
   hasValidSession,
   persistAuth,
@@ -23,9 +23,7 @@ export function useAuth() {
   const [candidateProfile, setCandidateProfile] = useState(
     storedAuth.candidateProfile,
   );
-  const [authReady, setAuthReady] = useState(
-    !hasValidSession(storedAuth.authSession),
-  );
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     async function restoreSession() {
@@ -35,15 +33,31 @@ export function useAuth() {
 
       restoreStarted.current = true;
 
-      if (!hasValidSession(storedAuth.authSession)) {
+      if (hasValidSession(storedAuth.authSession)) {
+        try {
+          const restored = await getCurrentUser(
+            storedAuth.authSession.accessToken,
+          );
+          const profile = buildProfile(
+            restored.profile,
+            restored.user,
+            storedAuth.authSession,
+            storedAuth.candidateProfile,
+          );
+
+          setAuthSession(storedAuth.authSession);
+          setCandidateProfile(profile);
+          persistAuth(storedAuth.authSession, profile);
+        } catch {
+          setAuthSession(storedAuth.authSession);
+          setCandidateProfile(storedAuth.candidateProfile);
+        }
         setAuthReady(true);
         return;
       }
 
       try {
-        const restored = await refreshSession({
-          refreshToken: storedAuth.authSession.refreshToken,
-        });
+        const restored = await refreshSession();
 
         const profile = buildProfile(
           restored.profile,
@@ -57,10 +71,12 @@ export function useAuth() {
 
         persistAuth(restored.session, profile);
       } catch {
-        persistAuth(null, null);
+        if (!hasValidSession(storedAuth.authSession)) {
+          persistAuth(null, null);
 
-        setAuthSession(null);
-        setCandidateProfile(null);
+          setAuthSession(null);
+          setCandidateProfile(null);
+        }
       } finally {
         setAuthReady(true);
       }
@@ -104,6 +120,7 @@ export function useAuth() {
   };
 
   const logout = () => {
+    logoutSession().catch(() => {});
     persistAuth(null, null);
 
     setAuthSession(null);

@@ -1,79 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useExam } from "../context/ExamContext";
-import { updateCandidateDetails, getSlotSchedules } from "../lib/api";
+import { ThemeToggle } from "../components/quiz/common/ThemeToggle";
+import { updateCandidateDetails } from "../lib/api";
 import mlscLogo from "../assets/MLSC-logo.png";
 import "./CandidateDashboard.css";
-
-const apiBaseUrl = (
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"
-).replace(/\/$/, "");
-
-function useSlotInfo(slotId) {
-  const [slotInfo, setSlotInfo] = useState(undefined); // undefined = loading
-
-  useEffect(() => {
-    if (!slotId) {
-      setSlotInfo(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function resolve() {
-      try {
-        // Fetch the matching slot row directly from Supabase REST via the backend
-        // The public.slots table has RLS "select = true" so we can hit it via
-        // the /api/admin/slots/summary endpoint which already returns all rows.
-        const [summaryRes, schedulesRes] = await Promise.all([
-          fetch(`${apiBaseUrl}/api/admin/slots/summary`),
-          fetch(`${apiBaseUrl}/api/admin/slots/schedules`),
-        ]);
-
-        if (!summaryRes.ok) throw new Error("Failed to load slots");
-        const summary = await summaryRes.json();
-        const schedules = schedulesRes.ok
-          ? await schedulesRes.json()
-          : { days: [], times: [] };
-
-        if (cancelled) return;
-
-        const row = summary.find((s) => s.id === slotId);
-        if (!row) {
-          setSlotInfo(null);
-          return;
-        }
-
-        // Find configured date for this day
-        const dayRow = (schedules.days || []).find(
-          (d) => d.day_number === row.slot_day,
-        );
-        const timeRow = (schedules.times || []).find(
-          (t) => t.slot_number === row.slot_number,
-        );
-
-        setSlotInfo({
-          day: row.slot_day,
-          num: row.slot_number,
-          venue: row.slot_venue,
-          isActive: Boolean(row.is_active),
-          slotDate: dayRow?.slot_date ?? null, // "YYYY-MM-DD" or null
-          startTime: timeRow?.start_time ?? null, // "HH:MM:SS" or null
-        });
-      } catch (err) {
-        console.error("Failed to resolve slot info:", err);
-        if (!cancelled) setSlotInfo(null);
-      }
-    }
-
-    resolve();
-    return () => {
-      cancelled = true;
-    };
-  }, [slotId]);
-
-  return slotInfo; // undefined = still loading, null = no slot / not found
-}
 
 function formatSlotDate(dateStr) {
   if (!dateStr) return null;
@@ -726,7 +657,12 @@ function EditModal({ profile, token, onClose, onSaved, onLocked }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function Dashboard({ candidateProfile, authSession, saveProfile, logout }) {
+export default function Dashboard({
+  candidateProfile,
+  authSession,
+  saveProfile,
+  logout,
+}) {
   const location = useLocation();
   const navigate = useNavigate();
   const { setCandidate } = useExam();
@@ -734,8 +670,16 @@ export default function Dashboard({ candidateProfile, authSession, saveProfile, 
   const [showEdit, setShowEdit] = useState(false);
   const { toasts, push, dismiss } = useToasts();
 
-  // Resolve slot info (day, num, venue, date, time) from the UUID stored in profile
-  const slotInfo = useSlotInfo(profile.slot_id ?? null);
+  const slotInfo = profile.slot_id
+    ? {
+        day: profile.slot_day ?? null,
+        num: profile.slot_number ?? null,
+        venue: profile.slot_venue ?? null,
+        isActive: Boolean(profile.slot_is_active),
+        slotDate: profile.slot_date ?? null,
+        startTime: profile.start_time ?? null,
+      }
+    : null;
 
   useEffect(() => {
     if (candidateProfile?.application_number) {
@@ -762,10 +706,13 @@ export default function Dashboard({ candidateProfile, authSession, saveProfile, 
   const statusKey = status.toLowerCase();
   const isLocked = profile.form_locked === true;
   const isPresent = Boolean(profile.quiz_attended);
+  const isSubmitted = Boolean(profile.quiz_submitted_at);
   const isSlotActive = Boolean(slotInfo?.isActive);
-  const canEnterTest = isPresent && isSlotActive;
+  const canEnterTest = isPresent && isSlotActive && !isSubmitted;
 
   function handleEnterTest() {
+    if (isSubmitted || !canEnterTest) return;
+
     setCandidate({
       ...profile,
       fullName: profile.full_name,
@@ -823,26 +770,29 @@ export default function Dashboard({ candidateProfile, authSession, saveProfile, 
             <p className="cd-header-sub">Your application dashboard</p>
           </div>
         </div>
-        <button
-          className="cd-btn cd-btn--danger-ghost"
-          onClick={() => {
-            logout();
-            navigate("/login");
-          }}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <div className="cd-header-actions">
+          <ThemeToggle />
+          <button
+            className="cd-btn cd-btn--danger-ghost"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
           >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Logout
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Logout
+          </button>
+        </div>
       </header>
 
       {/* ── Welcome banner ── */}
@@ -1214,6 +1164,42 @@ export default function Dashboard({ candidateProfile, authSession, saveProfile, 
           );
         }
 
+        if (slotInfo === null) {
+          return (
+            <div className="cd-card cd-card--slot">
+              <div className="cd-card-header">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <h3>Your Assigned Slot</h3>
+              </div>
+              <div className="cd-slot-pending">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                Slot assigned, but schedule details are not available yet.
+              </div>
+            </div>
+          );
+        }
+
         // Slot resolved
         const dateLabel = formatSlotDate(slotInfo.slotDate);
         const timeLabel = formatSlotTime(slotInfo.startTime);
@@ -1301,14 +1287,20 @@ export default function Dashboard({ candidateProfile, authSession, saveProfile, 
                   handleEnterTest();
                 }}
                 title={
-                  canEnterTest
-                    ? "Your test is ready"
-                    : !isPresent
-                      ? "Available after attendance is marked present"
-                      : "Waiting for admin to activate your slot"
+                  isSubmitted
+                    ? "This test has already been submitted"
+                    : canEnterTest
+                      ? "Your test is ready"
+                      : !isPresent
+                        ? "Available after attendance is marked present"
+                        : "Waiting for admin to activate your slot"
                 }
               >
-                {canEnterTest ? "Enter Test" : "Test Locked"}
+                {isSubmitted
+                  ? "Test Submitted"
+                  : canEnterTest
+                    ? "Enter Test"
+                    : "Test Locked"}
               </button>
             </div>
           </div>

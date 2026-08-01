@@ -17,7 +17,7 @@ function hasCompletedCandidateForm(profile) {
   return Boolean(profile?.application_number);
 }
 
-function buildExamCandidate(profile) {
+function buildExamCandidate(profile, authSession) {
   if (!profile) return null;
 
   const fullName = profile.full_name ?? profile.fullName ?? profile.name ?? "";
@@ -36,18 +36,20 @@ function buildExamCandidate(profile) {
     applicationId: enrollmentNumber,
     college: profile.college ?? profile.institution ?? "",
     email: profile.email ?? "",
+    accessToken: authSession?.accessToken ?? profile.accessToken ?? "",
   };
 }
 
 function ExamAuthRoute({ authSession, candidateProfile, children }) {
   const { candidate, setCandidate } = useExam();
   const hydratedCandidate = useMemo(
-    () => buildExamCandidate(candidateProfile),
-    [candidateProfile],
+    () => buildExamCandidate(candidateProfile, authSession),
+    [candidateProfile, authSession],
   );
   const hasMatchingIdentity =
     candidate?.fullName === hydratedCandidate?.fullName &&
-    candidate?.enrollmentNumber === hydratedCandidate?.enrollmentNumber;
+    candidate?.enrollmentNumber === hydratedCandidate?.enrollmentNumber &&
+    candidate?.accessToken === hydratedCandidate?.accessToken;
 
   useEffect(() => {
     if (!authSession || !hydratedCandidate) return;

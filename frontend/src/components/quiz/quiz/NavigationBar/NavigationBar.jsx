@@ -9,7 +9,7 @@ export const NavigationBar = ({ onSubmitClick }) => {
   const currentQuestion = questions[currentQuestionIndex];
 
   return (
-    <div className="w-full bg-white/95 backdrop-blur-md border-t border-[#E5E7EB] shadow-[0_-4px_18px_rgba(15,23,42,.04)] px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 select-none">
+    <div className="w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#E5E7EB] dark:border-slate-700 shadow-[0_-4px_18px_rgba(15,23,42,.04)] px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 select-none">
       <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
         <Button variant="secondary" onClick={() => currentQuestionIndex > 0 && setCurrentQuestionIndex(p => p - 1)} disabled={currentQuestionIndex === 0} className="disabled:opacity-40">
           <ArrowLeft className="w-4 h-4" /> Previous

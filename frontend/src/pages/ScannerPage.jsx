@@ -9,17 +9,11 @@ import AuthPanel from "../components/AuthPanel";
 import FormField from "../components/FormField";
 import { verifyScannerPassword } from "../lib/api";
 
-const SCANNER_PASSWORD_KEY = "scannerPassword";
-
 export default function ScannerPage() {
   const navigate = useNavigate();
   const isAdmin = localStorage.getItem("isAdmin") === "true";
-  const [password, setPassword] = useState(
-    () => sessionStorage.getItem(SCANNER_PASSWORD_KEY) || "",
-  );
-  const [verifiedPassword, setVerifiedPassword] = useState(
-    () => (isAdmin ? "admin" : sessionStorage.getItem(SCANNER_PASSWORD_KEY) || ""),
-  );
+  const [password, setPassword] = useState("");
+  const [verified, setVerified] = useState(isAdmin);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -32,23 +26,20 @@ export default function ScannerPage() {
       const trimmedPassword = password.trim();
 
       await verifyScannerPassword(trimmedPassword);
-      sessionStorage.setItem(SCANNER_PASSWORD_KEY, trimmedPassword);
-      setPassword(trimmedPassword);
-      setVerifiedPassword(trimmedPassword);
+      setPassword("");
+      setVerified(true);
     } catch (requestError) {
-      sessionStorage.removeItem(SCANNER_PASSWORD_KEY);
-      setVerifiedPassword("");
+      setVerified(false);
       setError(requestError.message);
     } finally {
       setLoading(false);
     }
   }
 
-  if (verifiedPassword) {
+  if (verified) {
     return (
       <AttendanceScanner
         adminBypass={isAdmin}
-        scannerPassword={verifiedPassword}
         onClose={() => navigate("/admin-dashboard")}
       />
     );

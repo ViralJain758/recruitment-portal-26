@@ -3,7 +3,7 @@ import { Card } from '../../common/Card';
 import { Clock, HelpCircle, Layers, ShieldCheck, Zap } from 'lucide-react';
 export const ExamInfoCard = () => {
   const specs = [
-    { icon: Clock, label: "Duration", val: "30 Minutes" },
+    { icon: Clock, label: "Duration", val: "20 Minutes" },
     { icon: HelpCircle, label: "Questions", val: "20" },
     { icon: Layers, label: "Sections", val: "Aptitude, Technical, Logical" },
     { icon: Zap, label: "Auto Save", val: "Enabled" },

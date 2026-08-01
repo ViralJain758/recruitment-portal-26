@@ -7,6 +7,7 @@ async function request(path, options = {}) {
 
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...requestOptions,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(headers || {}),
@@ -43,6 +44,12 @@ export function login(payload) {
   });
 }
 
+export function getCurrentUser(token) {
+  return request("/api/auth/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export function verifyAdminOtp(payload) {
   return request("/api/auth/admin-verify-otp", {
     method: "POST",
@@ -50,10 +57,55 @@ export function verifyAdminOtp(payload) {
   });
 }
 
-export function refreshSession(payload) {
+export function refreshSession(payload = {}) {
   return request("/api/auth/refresh", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function logoutSession() {
+  return request("/api/auth/logout", {
+    method: "POST",
+  });
+}
+
+export function forgotPassword(payload) {
+  return request("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resetPassword(payload) {
+  return request("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getQuizQuestions(token) {
+  return request("/api/quiz/questions", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function submitQuiz(payload, token) {
+  return request("/api/quiz/submit", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getQuizQuestionBank() {
+  return request("/api/admin/quiz/questions");
+}
+
+export function saveQuizQuestionBank(questions) {
+  return request("/api/admin/quiz/questions", {
+    method: "PUT",
+    body: JSON.stringify({ questions }),
   });
 }
 
@@ -91,6 +143,12 @@ export function updateCandidateAttendance(id, present) {
   });
 }
 
+export function resetCandidateQuiz(id) {
+  return request(`/api/admin/candidates/${id}/reset-quiz`, {
+    method: "POST",
+  });
+}
+
 export function lockCandidateForm(id, locked) {
   return request(`/api/admin/candidates/${id}/lock`, {
     method: "PATCH",
@@ -123,7 +181,10 @@ export function setGlobalLock(locked) {
 }
 
 export async function getDashboard(signal) {
-  const response = await fetch(`${apiBaseUrl}/dashboard`, { signal });
+  const response = await fetch(`${apiBaseUrl}/dashboard`, {
+    credentials: "include",
+    signal,
+  });
   const text = await response.text();
 
   if (!response.ok) {
@@ -141,9 +202,11 @@ export function verifyScannerPassword(password) {
 }
 
 function scannerAccessHeaders({ adminBypass, scannerPassword } = {}) {
-  return adminBypass
-    ? { "X-Admin-Scanner-Access": "true" }
-    : { "X-Scanner-Password": scannerPassword };
+  if (adminBypass || !scannerPassword) {
+    return {};
+  }
+
+  return { "X-Scanner-Password": scannerPassword };
 }
 
 export function markAttendance(qrToken, scannerAccess) {

@@ -38,11 +38,16 @@ const FULL_SELECT = `
     cf.attendance, cf.join_reason, cf.primary_department, cf.secondary_department,
     cf.other_societies, cf.recruit_reason,
     cs.application_status, cs.form_locked, cs.individual_unlock, cs.slot_id,
-    cq.qr_token, cq.quiz_attended, cq.quiz_attended_at
+    s.slot_day, s.slot_number, s.slot_venue, s.is_active AS slot_is_active,
+    d.slot_date, t.start_time,
+    cq.qr_token, cq.quiz_attended, cq.quiz_attended_at, cq.quiz_score, cq.quiz_submitted_at, cq.quiz_attempt_count
   FROM candidate_profiles cp
   LEFT JOIN candidate_form   cf ON cf.candidate_id = cp.id
   LEFT JOIN candidate_status cs ON cs.candidate_id = cp.id
   LEFT JOIN candidate_quiz   cq ON cq.candidate_id = cp.id
+  LEFT JOIN slots             s ON s.id = cs.slot_id
+  LEFT JOIN slot_day_dates    d ON d.day_number = s.slot_day
+  LEFT JOIN slot_time_schedules t ON t.slot_number = s.slot_number
 `;
 
 export async function findCandidateByUserId(userId) {
@@ -70,9 +75,7 @@ export async function findCandidateById(id) {
 }
 
 export async function findAllCandidates() {
-  const result = await db.execute(
-    `${FULL_SELECT} ORDER BY cp.created_at DESC`
-  );
+  const result = await db.execute(`${FULL_SELECT} ORDER BY cp.created_at DESC`);
   return result.rows;
 }
 
@@ -80,9 +83,17 @@ export async function findAllCandidates() {
 
 export async function upsertCandidateProfile(payload) {
   const {
-    user_id, email, application_number, full_name, date_of_birth,
-    attendance, join_reason, primary_department, secondary_department,
-    other_societies, recruit_reason,
+    user_id,
+    email,
+    application_number,
+    full_name,
+    date_of_birth,
+    attendance,
+    join_reason,
+    primary_department,
+    secondary_department,
+    other_societies,
+    recruit_reason,
   } = payload;
 
   try {
@@ -119,7 +130,15 @@ export async function upsertCandidateProfile(payload) {
               other_societies = excluded.other_societies,
               recruit_reason = excluded.recruit_reason,
               updated_at = datetime('now')`,
-      args: [candidateId, attendance, join_reason, primary_department, secondary_department, other_societies, recruit_reason],
+      args: [
+        candidateId,
+        attendance,
+        join_reason,
+        primary_department,
+        secondary_department,
+        other_societies,
+        recruit_reason,
+      ],
     });
 
     // 3. Status row (create if not exists)

@@ -3,6 +3,7 @@ import {
   getCandidates,
   updateCandidateStatus,
   updateCandidateAttendance,
+  resetCandidateQuiz,
   deleteCandidate,
   lockCandidateForm,
   individualUnlockCandidateForm,
@@ -95,6 +96,19 @@ export function useCandidates() {
     } catch (error) {
       console.error(error);
       alert(error.message || "Failed to update attendance.");
+      return null;
+    }
+  }
+
+  async function resetQuiz(id) {
+    try {
+      const response = await resetCandidateQuiz(id);
+      const updatedCandidate = response.data;
+      setCandidates((current) => upsertCandidate(current, updatedCandidate));
+      return updatedCandidate;
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Failed to reset candidate quiz.");
       return null;
     }
   }
@@ -379,6 +393,7 @@ export function useCandidates() {
     fetchCandidates,
     updateStatus,
     updateAttendance,
+    resetQuiz,
     removeCandidate,
     toggleLock,
     individualUnlock,

@@ -36,6 +36,24 @@ export async function updateAttendance(id, present) {
   return data;
 }
 
+export async function resetCandidateQuiz(id) {
+  await db.execute({
+    sql: `UPDATE candidate_quiz
+          SET quiz_attended = 0,
+              quiz_attended_at = NULL,
+              quiz_score = NULL,
+              quiz_submitted_at = NULL,
+              quiz_attempt_count = 0,
+              updated_at = datetime('now')
+          WHERE candidate_id = ?`,
+    args: [id],
+  });
+
+  const { data } = await findCandidateById(id);
+  if (!data) throw new Error("Candidate not found.");
+  return data;
+}
+
 export async function deleteCandidate(id) {
   // FIX (Bug 1): Resolve the user_id first, then delete refresh_tokens explicitly
   // before removing the user row. Although the schema has ON DELETE CASCADE on

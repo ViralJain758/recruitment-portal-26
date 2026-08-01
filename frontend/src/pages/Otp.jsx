@@ -26,11 +26,11 @@ export default function Otp({ onSignupSuccess }) {
     const locationState = location.state;
     const storedSignup = readPendingSignup();
     const nextPendingSignup =
-      locationState?.email && locationState?.password
+      locationState?.email
         ? locationState
         : storedSignup;
 
-    if (!nextPendingSignup?.email || !nextPendingSignup?.password) {
+    if (!nextPendingSignup?.email) {
       navigate("/signup", { replace: true });
       return;
     }
@@ -50,7 +50,7 @@ export default function Otp({ onSignupSuccess }) {
       return;
     }
 
-    if (!pendingSignup?.email || !pendingSignup?.password) {
+    if (!pendingSignup?.email) {
       setError("Missing signup details. Please start again.");
       navigate("/signup", { replace: true });
       return;
@@ -63,7 +63,6 @@ export default function Otp({ onSignupSuccess }) {
       const response = await verifySignupOtp({
         email: pendingSignup.email,
         otp,
-        password: pendingSignup.password,
       });
 
       clearPendingSignup();

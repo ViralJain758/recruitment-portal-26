@@ -58,10 +58,10 @@ export default function Signup({ onSignupSuccess }) {
       });
 
       if (response.requiresVerification) {
-        persistPendingSignup({ email, password });
+        persistPendingSignup({ email });
         navigate("/otp", {
           replace: true,
-          state: { email, password },
+          state: { email },
         });
         return;
       }

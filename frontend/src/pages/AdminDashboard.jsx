@@ -11,6 +11,7 @@ import SlotDistribution from "../components/SlotDistribution";
 
 import { useCandidates } from "../hooks/useCandidates";
 import { useCandidateFilters } from "../hooks/useCandidateFilters";
+import { logoutSession } from "../lib/api";
 import { calculateStats } from "../utils/candidateHelpers";
 
 export default function AdminDashboard() {
@@ -23,6 +24,7 @@ export default function AdminDashboard() {
     fetchCandidates,
     updateStatus,
     updateAttendance,
+    resetQuiz,
     removeCandidate,
     toggleLock,
     individualUnlock,
@@ -51,6 +53,8 @@ export default function AdminDashboard() {
     setStatusFilter,
     deptSort,
     setDeptSort,
+    slotSort,
+    setSlotSort,
     filteredCandidates,
   } = useCandidateFilters(candidates);
 
@@ -64,13 +68,37 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  const logout = () => {
+  useEffect(() => {
+    const hadDarkTheme = document.documentElement.classList.contains("dark");
+    document.documentElement.classList.remove("dark");
+    document.body.classList.add("admin-light-mode");
+
+    return () => {
+      document.body.classList.remove("admin-light-mode");
+      if (hadDarkTheme) {
+        document.documentElement.classList.add("dark");
+      }
+    };
+  }, []);
+
+  const logout = async () => {
+    await logoutSession().catch(() => {});
     localStorage.removeItem("isAdmin");
     window.location.reload();
   };
 
+  const handleResetCandidateQuiz = async (candidate) => {
+    const confirmed = window.confirm(
+      `Reset quiz for ${candidate.full_name || "this candidate"}? This will clear the previous score and allow them to retake the test.`,
+    );
+
+    if (!confirmed) return;
+
+    await resetQuiz(candidate.id);
+  };
+
   return (
-    <div className="dashboard">
+    <div className="dashboard admin-dashboard-light">
       {/* ── Header ── */}
       <header className="header">
         <div className="header-brand">
@@ -224,23 +252,8 @@ export default function AdminDashboard() {
 
       {/* ── Global lock banner ── */}
       {globalLocked && (
-        <div
-          style={{
-            margin: "0 0 16px",
-            padding: "12px 20px",
-            background: "#fef2f2",
-            border: "1px solid #fca5a5",
-            borderRadius: 10,
-            color: "#b91c1c",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+        <div className="lock-banner">
           <svg
-            width="18"
-            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -314,6 +327,16 @@ export default function AdminDashboard() {
             <option value="Content">Content</option>
             <option value="Media">Media</option>
           </select>
+          <select
+            value={slotSort}
+            onChange={(e) => setSlotSort(e.target.value)}
+            aria-label="Filter by slot"
+            style={{ marginLeft: 8 }}
+          >
+            <option value="All">All Slots</option>
+            <option value="Assigned">Assigned Slots</option>
+            <option value="Unassigned">Unassigned Slots</option>
+          </select>
         </div>
       </div>
 
@@ -336,6 +359,7 @@ export default function AdminDashboard() {
                 onSelect={setSelectedCandidate}
                 slotSummary={slotSummary}
                 slotSchedules={slotSchedules}
+                onResetQuiz={handleResetCandidateQuiz}
               />
             ))
           ) : (
@@ -359,13 +383,14 @@ export default function AdminDashboard() {
                   ? `No results for "${search}" — try a different name or email.`
                   : "No candidates match the selected filter."}
               </p>
-              {(search || statusFilter !== "All" || deptSort !== "All") && (
+              {(search || statusFilter !== "All" || deptSort !== "All" || slotSort !== "All") && (
                 <button
                   className="btn btn--ghost empty-reset"
                   onClick={() => {
                     setSearch("");
                     setStatusFilter("All");
                     setDeptSort("All");
+                    setSlotSort("All");
                   }}
                 >
                   Clear filters

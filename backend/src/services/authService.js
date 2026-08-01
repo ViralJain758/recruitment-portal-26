@@ -1,7 +1,15 @@
 import {
-  createUser,
+  comparePassword,
+  consumePendingUser,
+  createPasswordResetToken,
+  createPendingUser,
+  createSessionForUser,
+  createUserWithPasswordHash,
   getUserByToken,
+  resetPasswordWithToken,
+  revokeRefreshSession,
   signIn,
+  signAdminSession,
   refreshSession,
 } from "../models/authModel.js";
 
@@ -12,15 +20,15 @@ import {
   validateCandidatePayload,
 } from "../models/candidateModel.js";
 
-import {
-  createOTP,
-  verifyOTP,
-  isEmailVerified,
-} from "../models/otpModel.js";
+import { createOTP, verifyOTP, isEmailVerified } from "../models/otpModel.js";
 
-import { sendAdminOTPEmail, sendOTPEmail } from "./emailService.js";
+import {
+  sendAdminOTPEmail,
+  sendOTPEmail,
+  sendPasswordResetEmail,
+} from "./emailService.js";
 import { getGlobalLock } from "./adminService.js";
-import  db  from "../config/db.js"; 
+import db from "../config/db.js";
 
 // ─────────────────────────────────────────────
 // Convert expires_at to Unix timestamp
@@ -36,13 +44,12 @@ export function buildSessionResponse(
   session,
   user,
   profile = null,
-  redirectTo = null
+  redirectTo = null,
 ) {
-  return {
+  const response = {
     session: session
       ? {
           accessToken: session.access_token,
-          refreshToken: session.refresh_token,
           expiresAt: toUnixSeconds(session.expires_at),
         }
       : null,
@@ -55,13 +62,20 @@ export function buildSessionResponse(
     profile,
     redirectTo,
   };
+
+  if (session?.refresh_token) {
+    Object.defineProperty(response, "refreshToken", {
+      value: session.refresh_token,
+      enumerable: false,
+    });
+  }
+
+  return response;
 }
 
 export function bearerToken(req) {
   const authorization = req.headers.authorization || "";
-  return authorization.startsWith("Bearer ")
-    ? authorization.slice(7)
-    : null;
+  return authorization.startsWith("Bearer ") ? authorization.slice(7) : null;
 }
 
 export async function fetchCandidateProfile(userId) {
@@ -114,6 +128,7 @@ export async function registerUser(email, password) {
   }
 
   // Generate OTP
+  await createPendingUser(email, password);
   const { otp } = await createOTP(email);
 
   // Send OTP Email
@@ -137,23 +152,26 @@ export async function registerUser(email, password) {
 // ─────────────────────────────────────────────
 // Complete Registration after OTP Verification
 // ─────────────────────────────────────────────
-export async function completeRegistration(email, password) {
-  const { data: user, error } = await createUser(email, password);
+export async function completeRegistration(email) {
+  const { data: pendingUser, error: pendingError } =
+    await consumePendingUser(email);
+  if (pendingError) return { error: pendingError };
+
+  const { data: user, error } = await createUserWithPasswordHash(
+    email,
+    pendingUser.passwordHash,
+  );
 
   if (error) return { error };
 
-  const { data, error: signInError } = await signIn(email, password);
-
-  if (signInError) {
-    return { error: signInError };
-  }
+  const data = await createSessionForUser(user.user);
 
   return {
     data: buildSessionResponse(
       data.session,
       data.user,
       null,
-      "/candidate-details"
+      "/candidate-details",
     ),
   };
 }
@@ -163,14 +181,16 @@ export async function completeRegistration(email, password) {
 // ─────────────────────────────────────────────
 export async function loginUser(email, password) {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  const adminPassword =
+    process.env.ADMIN_PASSWORD?.trim() ||
+    process.env.ADMIN_PASSWORD_HASH?.trim();
   const adminOtpEmail = process.env.ADMIN_OTP_EMAIL?.trim();
 
   if (
     adminEmail &&
     adminPassword &&
     email.toLowerCase() === adminEmail &&
-    password === adminPassword
+    (await comparePassword(password, adminPassword))
   ) {
     if (!adminOtpEmail) {
       return {
@@ -202,7 +222,7 @@ export async function loginUser(email, password) {
       data.session,
       data.user,
       profile,
-      profile?.application_number ? "/dashboard" : "/candidate-details"
+      profile?.application_number ? "/dashboard" : "/candidate-details",
     ),
   };
 }
@@ -212,13 +232,15 @@ export async function loginUser(email, password) {
 // ─────────────────────────────────────────────
 export async function verifyAdminLoginOtp(email, password, otp) {
   const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  const adminPassword =
+    process.env.ADMIN_PASSWORD?.trim() ||
+    process.env.ADMIN_PASSWORD_HASH?.trim();
   const adminOtpEmail = process.env.ADMIN_OTP_EMAIL?.trim();
 
   if (!adminEmail || !adminPassword) {
     return {
       error: {
-        message: "Admin credentials are not configured.",
+        message: "Admin credentials are not securely configured.",
       },
     };
   }
@@ -231,7 +253,11 @@ export async function verifyAdminLoginOtp(email, password, otp) {
     };
   }
 
-  if (email.toLowerCase() !== adminEmail || password !== adminPassword) {
+  const validAdminPassword =
+    email.toLowerCase() === adminEmail &&
+    (await comparePassword(password, adminPassword));
+
+  if (!validAdminPassword) {
     return {
       error: {
         message: "Invalid email or password.",
@@ -252,6 +278,7 @@ export async function verifyAdminLoginOtp(email, password, otp) {
   return {
     data: {
       isAdmin: true,
+      adminSession: signAdminSession({ email: adminEmail }),
       redirectTo: "/admin-dashboard",
     },
   };
@@ -269,9 +296,33 @@ export async function refreshUserSession(refreshToken) {
       data.session,
       data.user,
       profile,
-      profile?.application_number ? "/dashboard" : "/candidate-details"
+      profile?.application_number ? "/dashboard" : "/candidate-details",
     ),
   };
+}
+
+export async function logoutUser(refreshToken) {
+  await revokeRefreshSession(refreshToken);
+}
+
+export async function requestPasswordReset(email) {
+  const { data, error } = await createPasswordResetToken(email);
+  if (error) return { error };
+
+  if (data?.token) {
+    await sendPasswordResetEmail(data.email, data.token);
+  }
+
+  return {
+    data: {
+      message:
+        "If an account exists for that email, a password reset link has been sent.",
+    },
+  };
+}
+
+export async function resetUserPassword(token, password) {
+  return resetPasswordWithToken(token, password);
 }
 
 // ─────────────────────────────────────────────
@@ -309,7 +360,7 @@ export async function saveCandidate(body, user) {
   }
 
   const { data, error } = await upsertCandidateProfile(
-    mapCandidatePayload(body, user)
+    mapCandidatePayload(body, user),
   );
 
   if (error) {

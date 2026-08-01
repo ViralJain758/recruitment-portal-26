@@ -3,7 +3,7 @@ import { Card } from '../../common/Card';
 import { CheckCircle2 } from 'lucide-react';
 export const InstructionCard = () => {
   const guides = [
-    "The exam consists of 20 multiple choice questions.", "Total duration of the exam is 30 minutes.",
+    "The exam consists of 20 multiple choice questions.", "Total duration of the exam is 20 minutes.",
     "The timer will start immediately after you begin.", "Once started, the timer cannot be paused.",
     "Do not refresh, close or switch tabs during the exam.", "If any malpractice is detected, your exam will be auto submitted.",
     "Make sure you are in a distraction-free environment.", "Full screen mode is mandatory for this exam."
