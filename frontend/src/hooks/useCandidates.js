@@ -16,6 +16,7 @@ import {
   getSlotSchedules,
   updateDayDate,
   updateSlotTime,
+  assignCandidateSlot,
   addDay,
   removeDay,
   addSlot,
@@ -130,6 +131,8 @@ export function useCandidates() {
       const response = await lockCandidateForm(id, locked);
       const updatedCandidate = response.data;
       setCandidates((current) => upsertCandidate(current, updatedCandidate));
+      // Refresh full list to ensure UI reflects any derived fields consistently
+      fetchCandidates().catch(() => {});
       return updatedCandidate;
     } catch (error) {
       console.error(error);
@@ -143,6 +146,8 @@ export function useCandidates() {
       const response = await individualUnlockCandidateForm(id, unlocked);
       const updatedCandidate = response.data;
       setCandidates((current) => upsertCandidate(current, updatedCandidate));
+      // Refresh full list to ensure UI reflects any derived fields consistently
+      fetchCandidates().catch(() => {});
       return updatedCandidate;
     } catch (error) {
       console.error(error);
@@ -209,6 +214,21 @@ export function useCandidates() {
     } catch (error) {
       console.error(error);
       alert(error.message || "Failed to update slot activation.");
+      return null;
+    }
+  }
+
+  async function saveAssignedSlot(id, slotId) {
+    try {
+      const response = await assignCandidateSlot(id, slotId);
+      const updatedCandidate = response.data;
+      setCandidates((current) => upsertCandidate(current, updatedCandidate));
+      await fetchCandidates();
+      await fetchSlotSummary();
+      return updatedCandidate;
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Failed to assign slot.");
       return null;
     }
   }
@@ -409,6 +429,7 @@ export function useCandidates() {
     schedulesLoading,
     saveDayDate,
     saveSlotTime,
+    assignCandidateSlot: saveAssignedSlot,
     addDay: addDayFn,
     removeDay: removeDayFn,
     addSlot: addSlotFn,

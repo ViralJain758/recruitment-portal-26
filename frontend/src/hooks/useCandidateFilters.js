@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { getStatusGroup } from "../utils/candidateHelpers";
 
 const DEPT_ORDER = ["Tech", "Design", "Marketing", "Content", "Media"];
 
@@ -22,15 +23,23 @@ export function useCandidateFilters(candidates) {
         .includes(search.toLowerCase());
 
       const matchesStatus =
-        statusFilter === "All" || candidate.application_status === statusFilter;
+        statusFilter === "All" ||
+        getStatusGroup(candidate.application_status) ===
+          getStatusGroup(statusFilter);
 
       const matchesDept =
         deptSort === "All" ||
         candidate.primary_department === deptSort ||
         candidate.secondary_department === deptSort;
 
-      const matchesSlot = slotSort === "All" ||
-        (slotSort === "Assigned" ? Boolean(candidate.slot_id) : !candidate.slot_id);
+      const matchesSlot =
+        slotSort === "All" ||
+        (slotSort === "Assigned"
+          ? Boolean(candidate.slot_id)
+          : slotSort === "Unassigned"
+            ? !candidate.slot_id
+            : // If slotSort is a specific slot id, match that id (compare as strings)
+              String(candidate.slot_id) === String(slotSort));
 
       return matchesSearch && matchesStatus && matchesDept && matchesSlot;
     });

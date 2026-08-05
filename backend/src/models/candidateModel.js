@@ -5,7 +5,9 @@ export const candidateFields = [
   ["applicationNumber", "application_number"],
   ["name", "full_name"],
   ["dob", "date_of_birth"],
+  ["phoneNumber", "phone_number"],
   ["attendance", "attendance"],
+  ["domainExperience", "domain_experience"],
   ["joinReason", "join_reason"],
   ["primaryDepartment", "primary_department"],
   ["secondaryDepartment", "secondary_department"],
@@ -35,8 +37,9 @@ const FULL_SELECT = `
   SELECT
     cp.id, cp.user_id, cp.email, cp.application_number, cp.full_name, cp.date_of_birth,
     cp.created_at, cp.updated_at,
-    cf.attendance, cf.join_reason, cf.primary_department, cf.secondary_department,
-    cf.other_societies, cf.recruit_reason,
+    cf.phone_number, cf.attendance, cf.domain_experience, cf.join_reason,
+    cf.primary_department, cf.secondary_department, cf.other_societies,
+    cf.recruit_reason,
     cs.application_status, cs.form_locked, cs.individual_unlock, cs.slot_id,
     s.slot_day, s.slot_number, s.slot_venue, s.is_active AS slot_is_active,
     d.slot_date, t.start_time,
@@ -88,7 +91,9 @@ export async function upsertCandidateProfile(payload) {
     application_number,
     full_name,
     date_of_birth,
+    phone_number,
     attendance,
+    domain_experience,
     join_reason,
     primary_department,
     secondary_department,
@@ -120,10 +125,12 @@ export async function upsertCandidateProfile(payload) {
     // 2. Form answers
     await db.execute({
       sql: `INSERT INTO candidate_form
-              (candidate_id, attendance, join_reason, primary_department, secondary_department, other_societies, recruit_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+              (candidate_id, phone_number, attendance, domain_experience, join_reason, primary_department, secondary_department, other_societies, recruit_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (candidate_id) DO UPDATE SET
+              phone_number = excluded.phone_number,
               attendance = excluded.attendance,
+              domain_experience = excluded.domain_experience,
               join_reason = excluded.join_reason,
               primary_department = excluded.primary_department,
               secondary_department = excluded.secondary_department,
@@ -132,7 +139,9 @@ export async function upsertCandidateProfile(payload) {
               updated_at = datetime('now')`,
       args: [
         candidateId,
+        phone_number,
         attendance,
+        domain_experience,
         join_reason,
         primary_department,
         secondary_department,

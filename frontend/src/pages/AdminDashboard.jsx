@@ -8,6 +8,7 @@ import CandidateCard from "../components/CandidateCard";
 import CandidateDrawer from "../components/CandidateDrawer";
 import StatsGrid from "../components/StatsGrid";
 import SlotDistribution from "../components/SlotDistribution";
+import { formatSlotSummary } from "../utils/slotResolver";
 
 import { useCandidates } from "../hooks/useCandidates";
 import { useCandidateFilters } from "../hooks/useCandidateFilters";
@@ -40,6 +41,7 @@ export default function AdminDashboard() {
     schedulesLoading,
     saveDayDate,
     saveSlotTime,
+    assignCandidateSlot,
     addDay,
     removeDay,
     addSlot,
@@ -336,6 +338,16 @@ export default function AdminDashboard() {
             <option value="All">All Slots</option>
             <option value="Assigned">Assigned Slots</option>
             <option value="Unassigned">Unassigned Slots</option>
+            {Array.isArray(slotSummary) && slotSummary.length > 0 ? (
+              <optgroup label="By Slot">
+                {slotSummary.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {formatSlotSummary(s.id, slotSummary, slotSchedules) ||
+                      `Day ${s.slot_day} · Slot ${s.slot_number} · ${s.slot_venue}`}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </div>
       </div>
@@ -383,7 +395,10 @@ export default function AdminDashboard() {
                   ? `No results for "${search}" — try a different name or email.`
                   : "No candidates match the selected filter."}
               </p>
-              {(search || statusFilter !== "All" || deptSort !== "All" || slotSort !== "All") && (
+              {(search ||
+                statusFilter !== "All" ||
+                deptSort !== "All" ||
+                slotSort !== "All") && (
                 <button
                   className="btn btn--ghost empty-reset"
                   onClick={() => {
@@ -427,8 +442,11 @@ export default function AdminDashboard() {
           const updated = await individualUnlock(id, unlocked);
           if (updated) setSelectedCandidate(updated);
         }}
+        onAssignSlot={async (id, slotId) => {
+          const updated = await assignCandidateSlot(id, slotId);
+          if (updated) setSelectedCandidate(updated);
+        }}
       />
-
     </div>
   );
 }

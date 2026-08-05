@@ -262,6 +262,13 @@ export function updateSlotTime(slotNumber, startTime) {
   });
 }
 
+export function assignCandidateSlot(id, slotId) {
+  return request(`/api/admin/candidates/${id}/slot`, {
+    method: "PATCH",
+    body: JSON.stringify({ slot_id: slotId || null }),
+  });
+}
+
 export function addDay(dayNumber) {
   return request("/api/admin/slots/schedules/day", {
     method: "POST",

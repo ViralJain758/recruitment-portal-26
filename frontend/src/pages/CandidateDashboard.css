@@ -1337,19 +1337,19 @@
 /* Dark mode */
 .dark .cd {
   min-height: 100svh;
-  color: #dbeafe;
+  color: #e5e7eb;
   background:
-    radial-gradient(circle at 20% 0%, rgba(59, 130, 246, 0.14), transparent 28%),
-    radial-gradient(circle at 85% 18%, rgba(14, 165, 233, 0.1), transparent 24%),
-    #0f172a;
+    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.06), transparent 28%),
+    radial-gradient(circle at 85% 18%, rgba(255, 255, 255, 0.04), transparent 24%),
+    #121212;
 }
 
 .dark .cd-header,
 .dark .cd-card,
 .dark .cd-modal,
 .dark .cd-qr-wrap {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.9));
-  border-color: rgba(96, 165, 250, 0.18);
+  background: linear-gradient(180deg, rgba(39, 39, 42, 0.96), rgba(24, 24, 27, 0.92));
+  border-color: rgba(161, 161, 170, 0.18);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
 }
 
@@ -1382,8 +1382,8 @@
 .dark .cd-card-header,
 .dark .cd-card-actions,
 .dark .cd-modal-footer {
-  background: rgba(30, 41, 59, 0.68);
-  border-color: rgba(96, 165, 250, 0.14);
+  background: rgba(39, 39, 42, 0.72);
+  border-color: rgba(161, 161, 170, 0.14);
 }
 
 .dark .cd-detail-item,
@@ -1391,12 +1391,12 @@
 .dark .cd-support-item,
 .dark .cd-faq-item,
 .dark .cd-modal-header {
-  border-color: rgba(96, 165, 250, 0.12);
+  border-color: rgba(161, 161, 170, 0.12);
 }
 
 .dark .cd-detail-item,
 .dark .cd-support-item {
-  background: rgba(96, 165, 250, 0.05);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .dark .cd-detail-item--wide,
@@ -1407,34 +1407,34 @@
 .dark .cd-detail-item:hover,
 .dark .cd-support-item:hover,
 .dark .cd-faq-btn:hover {
-  background: rgba(96, 165, 250, 0.1);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .dark .cd-detail-value--mono {
-  color: #93c5fd;
-  background: rgba(59, 130, 246, 0.14);
+  color: #e5e7eb;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .dark .cd-detail-value--prose {
   color: #cbd5e1;
-  background: rgba(15, 23, 42, 0.7);
-  border-color: rgba(96, 165, 250, 0.14);
+  background: rgba(24, 24, 27, 0.74);
+  border-color: rgba(161, 161, 170, 0.14);
 }
 
 .dark .cd-card--slot {
-  border-color: rgba(96, 165, 250, 0.34);
-  box-shadow: 0 18px 44px rgba(37, 99, 235, 0.16);
+  border-color: rgba(161, 161, 170, 0.34);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.16);
 }
 
 .dark .cd-card--slot .cd-card-header,
 .dark .cd-card--slot .cd-schedule-item {
-  background: linear-gradient(135deg, rgba(30, 64, 175, 0.18), rgba(15, 23, 42, 0.74));
-  border-color: rgba(96, 165, 250, 0.22);
+  background: linear-gradient(135deg, rgba(63, 63, 70, 0.22), rgba(24, 24, 27, 0.78));
+  border-color: rgba(161, 161, 170, 0.22);
 }
 
 .dark .cd-card--slot .cd-schedule-value,
 .dark .cd-schedule-sub {
-  color: #93c5fd;
+  color: #e5e7eb;
 }
 
 .dark .cd-qr-early-warning {

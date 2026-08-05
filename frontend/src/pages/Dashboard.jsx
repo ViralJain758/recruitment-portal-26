@@ -416,7 +416,9 @@ function EditModal({ profile, token, onClose, onSaved, onLocked }) {
   const [fields, setFields] = useState({
     full_name: profile.full_name ?? "",
     date_of_birth: profile.date_of_birth ?? "",
+    phone_number: profile.phone_number ?? "",
     attendance: profile.attendance ?? "",
+    domain_experience: profile.domain_experience ?? "",
     primary_department: profile.primary_department ?? "",
     secondary_department: profile.secondary_department ?? "",
     join_reason: profile.join_reason ?? "",
@@ -552,6 +554,16 @@ function EditModal({ profile, token, onClose, onSaved, onLocked }) {
               </div>
 
               <div className="cd-field">
+                <label htmlFor="edit-phone">Phone Number</label>
+                <input
+                  id="edit-phone"
+                  type="tel"
+                  value={fields.phone_number}
+                  onChange={(e) => set("phone_number", e.target.value)}
+                />
+              </div>
+
+              <div className="cd-field">
                 <label htmlFor="edit-attendance">
                   Tech Meet &amp; Society Fair Attendance
                 </label>
@@ -608,6 +620,18 @@ function EditModal({ profile, token, onClose, onSaved, onLocked }) {
                   rows={3}
                   value={fields.join_reason}
                   onChange={(e) => set("join_reason", e.target.value)}
+                />
+              </div>
+
+              <div className="cd-field cd-field--full">
+                <label htmlFor="edit-domain-experience">
+                  What is your experience in the preferred domain?
+                </label>
+                <textarea
+                  id="edit-domain-experience"
+                  rows={3}
+                  value={fields.domain_experience}
+                  onChange={(e) => set("domain_experience", e.target.value)}
                 />
               </div>
 
@@ -930,6 +954,10 @@ export default function Dashboard({
             <span className="cd-detail-value">{profile.date_of_birth}</span>
           </div>
           <div className="cd-detail-item">
+            <span className="cd-detail-label">Phone Number</span>
+            <span className="cd-detail-value">{profile.phone_number}</span>
+          </div>
+          <div className="cd-detail-item">
             <span className="cd-detail-label">
               <svg
                 className="cd-detail-label-icon"
@@ -1013,6 +1041,14 @@ export default function Dashboard({
             </span>
             <span className="cd-detail-value cd-detail-value--prose">
               {profile.join_reason}
+            </span>
+          </div>
+          <div className="cd-detail-item cd-detail-item--wide">
+            <span className="cd-detail-label">
+              What is your experience in the preferred domain?
+            </span>
+            <span className="cd-detail-value cd-detail-value--prose">
+              {profile.domain_experience}
             </span>
           </div>
           <div className="cd-detail-item cd-detail-item--wide">

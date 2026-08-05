@@ -33,6 +33,9 @@ export const ExamProvider = ({ children }) => {
   const [responses, setResponses] = useState(() => {
     return readJsonStorage("mlsc_responses", {});
   });
+  const [visitedQuestions, setVisitedQuestions] = useState(() => {
+    return readJsonStorage("mlsc_visited_questions", {});
+  });
   const [reviewStatus, setReviewStatus] = useState(() => {
     return readJsonStorage("mlsc_review", {});
   });
@@ -69,6 +72,9 @@ export const ExamProvider = ({ children }) => {
     localStorage.setItem("mlsc_responses", JSON.stringify(responses));
   }, [responses]);
   useEffect(() => {
+    localStorage.setItem("mlsc_visited_questions", JSON.stringify(visitedQuestions));
+  }, [visitedQuestions]);
+  useEffect(() => {
     localStorage.setItem("mlsc_review", JSON.stringify(reviewStatus));
   }, [reviewStatus]);
   useEffect(() => {
@@ -91,6 +97,18 @@ export const ExamProvider = ({ children }) => {
       completeExam();
     }
   }, [securityWarnings, examStarted, examCompleted, examPaused]);
+
+  useEffect(() => {
+    if (questions.length > 0 && currentQuestionIndex >= 0) {
+      const currentQuestion = questions[currentQuestionIndex];
+      if (currentQuestion?.id !== undefined && currentQuestion?.id !== null) {
+        setVisitedQuestions((prev) => {
+          if (prev[currentQuestion.id]) return prev;
+          return { ...prev, [currentQuestion.id]: true };
+        });
+      }
+    }
+  }, [currentQuestionIndex, questions]);
 
   useEffect(() => {
     let timer;
@@ -119,6 +137,7 @@ export const ExamProvider = ({ children }) => {
 
     setQuestions(selectedAdminQuestions);
     setResponses({});
+    setVisitedQuestions({});
     setReviewStatus({});
     setCurrentQuestionIndex(0);
     setTimeLeft(20 * 60);
@@ -163,6 +182,7 @@ export const ExamProvider = ({ children }) => {
       "mlsc_quiz_questions",
       "mlsc_shuffled_questions",
       "mlsc_responses",
+      "mlsc_visited_questions",
       "mlsc_review",
       "mlsc_time_left",
       "mlsc_warnings",
@@ -173,6 +193,7 @@ export const ExamProvider = ({ children }) => {
     setExamCompleted(false);
     setQuestions([]);
     setResponses({});
+    setVisitedQuestions({});
     setReviewStatus({});
     setCurrentQuestionIndex(0);
     setTimeLeft(20 * 60);
@@ -194,6 +215,8 @@ export const ExamProvider = ({ children }) => {
         setExamPaused,
         responses,
         setResponses,
+        visitedQuestions,
+        setVisitedQuestions,
         reviewStatus,
         setReviewStatus,
         currentQuestionIndex,

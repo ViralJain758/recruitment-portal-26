@@ -56,6 +56,12 @@ const allowedOrigins = [
 
 function isAllowedOrigin(origin) {
   if (!origin) return true;
+  // Allow any localhost origin during development (different dev ports)
+  if (
+    origin.startsWith("http://localhost") ||
+    origin.startsWith("http://127.0.0.1")
+  )
+    return true;
   return allowedOrigins.includes(origin);
 }
 
@@ -90,7 +96,9 @@ function parseCookieHeader(header) {
 
 io.use((socket, next) => {
   const cookies = parseCookieHeader(socket.request.headers.cookie);
-  const admin = cookies.adminSession ? verifyAdminSession(cookies.adminSession) : null;
+  const admin = cookies.adminSession
+    ? verifyAdminSession(cookies.adminSession)
+    : null;
 
   if (!admin) {
     return next(new Error("Unauthorized"));
@@ -190,7 +198,10 @@ app.use((err, req, res, _next) => {
     method: req.method,
   });
   res.status(statusCode).json({
-    message: statusCode >= 500 ? "Internal server error" : err.message || "Internal server error",
+    message:
+      statusCode >= 500
+        ? "Internal server error"
+        : err.message || "Internal server error",
     requestId: req.requestId,
   });
 });
@@ -206,7 +217,10 @@ process.on("unhandledRejection", (reason) => {
 });
 
 process.on("uncaughtException", (error) => {
-  logger.error("Uncaught exception", { error: error.message, stack: error.stack });
+  logger.error("Uncaught exception", {
+    error: error.message,
+    stack: error.stack,
+  });
 });
 
 async function ensureBaseSchema() {
@@ -320,13 +334,29 @@ async function ensureBaseSchema() {
     }
   }
 
-  await ensureColumn("users", "email_verified", "email_verified INTEGER NOT NULL DEFAULT 1");
-  await ensureColumn("users", "failed_login_attempts", "failed_login_attempts INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(
+    "users",
+    "email_verified",
+    "email_verified INTEGER NOT NULL DEFAULT 1",
+  );
+  await ensureColumn(
+    "users",
+    "failed_login_attempts",
+    "failed_login_attempts INTEGER NOT NULL DEFAULT 0",
+  );
   await ensureColumn("users", "locked_until", "locked_until TEXT");
   await ensureColumn("refresh_tokens", "token_hash", "token_hash TEXT");
   await ensureColumn("candidate_quiz", "quiz_score", "quiz_score INTEGER");
-  await ensureColumn("candidate_quiz", "quiz_submitted_at", "quiz_submitted_at TEXT");
-  await ensureColumn("candidate_quiz", "quiz_attempt_count", "quiz_attempt_count INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(
+    "candidate_quiz",
+    "quiz_submitted_at",
+    "quiz_submitted_at TEXT",
+  );
+  await ensureColumn(
+    "candidate_quiz",
+    "quiz_attempt_count",
+    "quiz_attempt_count INTEGER NOT NULL DEFAULT 0",
+  );
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS pending_users (

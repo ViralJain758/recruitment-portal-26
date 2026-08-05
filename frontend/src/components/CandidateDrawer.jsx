@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
 import {
   resolveSlot,
   formatSlotDate,
   formatSlotTime,
+  formatSlotSummary,
 } from "../utils/slotResolver";
+import { normalizeBoolean } from "../utils/candidateHelpers";
 
 export default function CandidateDrawer({
   candidate,
@@ -17,29 +19,23 @@ export default function CandidateDrawer({
   onDelete,
   onToggleLock,
   onIndividualUnlock,
+  onAssignSlot,
 }) {
   const [dialog, setDialog] = useState(null);
-  const scrollYRef = useRef(0);
+  const [slotDraft, setSlotDraft] = useState(candidate?.slot_id ?? "");
 
   useEffect(() => {
     if (!candidate) return;
 
-    scrollYRef.current = window.scrollY;
-    document.body.classList.add("drawer-open");
-    document.body.style.top = `-${scrollYRef.current}px`;
-
-    return () => {
-      document.body.classList.remove("drawer-open");
-      document.body.style.top = "";
-      window.scrollTo({ top: scrollYRef.current, behavior: "instant" });
-    };
+    setSlotDraft(candidate?.slot_id ?? "");
   }, [candidate]);
 
   if (!candidate) return null;
 
-  const isPresent = Boolean(candidate.quiz_attended);
-  const isLocked = candidate.form_locked === true;
-  const isIndividuallyUnlocked = candidate.individual_unlock === true;
+  const isPresent = normalizeBoolean(candidate.quiz_attended);
+  const isLocked = normalizeBoolean(candidate.form_locked);
+  const slotOptions = (slotSummary || []).filter((slot) => slot?.id != null);
+  const isIndividuallyUnlocked = normalizeBoolean(candidate.individual_unlock);
   const resolvedSlot = resolveSlot(
     candidate.slot_id,
     slotSummary,
@@ -73,8 +69,7 @@ export default function CandidateDrawer({
               : "The candidate can currently edit their form. Lock it to prevent further changes."}
           </p>
           <button
-            className={isLocked ? "attend-present" : "reject"}
-            style={{ flex: "none", width: "100%" }}
+            className={`drawer-toggle ${isLocked ? "drawer-toggle--active" : ""}`}
             onClick={() =>
               confirmAction(
                 isLocked
@@ -94,43 +89,9 @@ export default function CandidateDrawer({
               )
             }
           >
-            {isLocked ? (
-              <>
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ marginRight: 6, verticalAlign: "middle" }}
-                >
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-                </svg>
-                Unlock Form
-              </>
-            ) : (
-              <>
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ marginRight: 6, verticalAlign: "middle" }}
-                >
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                Lock Form
-              </>
-            )}
+            <span className="drawer-toggle-label">
+              {isLocked ? "Unlock form" : "Lock form"}
+            </span>
           </button>
         </div>
       );
@@ -180,8 +141,7 @@ export default function CandidateDrawer({
             </p>
           </div>
           <button
-            className="reject"
-            style={{ flex: "none", width: "100%" }}
+            className="drawer-toggle drawer-toggle--active"
             onClick={() =>
               confirmAction(
                 {
@@ -194,21 +154,7 @@ export default function CandidateDrawer({
               )
             }
           >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ marginRight: 6, verticalAlign: "middle" }}
-            >
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-            Revoke Individual Unlock
+            <span className="drawer-toggle-label">Revoke individual unlock</span>
           </button>
         </div>
       );
@@ -256,8 +202,7 @@ export default function CandidateDrawer({
           </p>
         </div>
         <button
-          className="attend-present"
-          style={{ flex: "none", width: "100%" }}
+          className="drawer-toggle drawer-toggle--active"
           onClick={() =>
             confirmAction(
               {
@@ -270,21 +215,7 @@ export default function CandidateDrawer({
             )
           }
         >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ marginRight: 6, verticalAlign: "middle" }}
-          >
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-          </svg>
-          Unlock Form for This Candidate
+          <span className="drawer-toggle-label">Allow individual unlock</span>
         </button>
       </div>
     );
@@ -387,6 +318,11 @@ export default function CandidateDrawer({
             </div>
 
             <div className="detail-item">
+              <h4>Phone Number</h4>
+              <p>{candidate.phone_number}</p>
+            </div>
+
+            <div className="detail-item">
               <h4>Attendance</h4>
               <p>{candidate.attendance}</p>
             </div>
@@ -436,6 +372,32 @@ export default function CandidateDrawer({
               <p>{candidate.primary_department}</p>
             </div>
 
+            <div className="detail-item detail-item--wide">
+              <h4>Manual Slot Assignment</h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <select
+                  value={slotDraft ?? ""}
+                  onChange={(e) => setSlotDraft(e.target.value || "")}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #dbe7f1" }}
+                >
+                  <option value="">Unassigned</option>
+                  {slotOptions.map((slot) => (
+                    <option key={slot.id} value={slot.id}>
+                      {formatSlotSummary(slot.id, slotSummary, slotSchedules) ||
+                        `Day ${slot.slot_day} · Slot ${slot.slot_number} · ${slot.slot_venue}`}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="attend-present"
+                  onClick={() => onAssignSlot?.(candidate.id, slotDraft || null)}
+                  disabled={!onAssignSlot}
+                >
+                  Save Slot
+                </button>
+              </div>
+            </div>
+
             <div className="detail-item">
               <h4>Secondary Department</h4>
               <p>{candidate.secondary_department}</p>
@@ -444,6 +406,11 @@ export default function CandidateDrawer({
             <div className="detail-item detail-item--wide">
               <h4>Why MLSC?</h4>
               <p>{candidate.join_reason}</p>
+            </div>
+
+            <div className="detail-item detail-item--wide">
+              <h4>Preferred Domain Experience</h4>
+              <p>{candidate.domain_experience}</p>
             </div>
 
             <div className="detail-item detail-item--wide">

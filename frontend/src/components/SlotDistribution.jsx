@@ -669,16 +669,8 @@ export default function SlotDistribution({
                               title={slotUuid ? `Slot UUID: ${slotUuid}` : ""}
                               data-venue={venue}
                             >
-                              <button
-                                className={`slot-cell-toggle ${slotActive ? "slot-cell-toggle--active" : ""}`}
-                                onClick={() =>
-                                  slotUuid &&
-                                  onToggleSlotActivation?.(
-                                    slotUuid,
-                                    !slotActive,
-                                  )
-                                }
-                                disabled={!slotUuid || slotLoading}
+                              <label
+                                className={`slot-cell-toggle-row ${slotActive ? "slot-cell-toggle-row--active" : ""}`}
                                 title={
                                   slotUuid
                                     ? slotActive
@@ -687,8 +679,23 @@ export default function SlotDistribution({
                                     : "No slot assigned"
                                 }
                               >
-                                {slotActive ? "Active" : "Inactive"}
-                              </button>
+                                <input
+                                  type="checkbox"
+                                  className="slot-cell-toggle-input"
+                                  checked={slotActive}
+                                  disabled={!slotUuid || slotLoading}
+                                  onChange={() =>
+                                    slotUuid &&
+                                    onToggleSlotActivation?.(
+                                      slotUuid,
+                                      !slotActive,
+                                    )
+                                  }
+                                />
+                                <span className="slot-cell-toggle-label">
+                                  {slotActive ? "Active" : "Inactive"}
+                                </span>
+                              </label>
                               <span className="slot-cell-id">
                                 {slotUuid ? shortUuid(slotUuid) + "…" : "—"}
                               </span>

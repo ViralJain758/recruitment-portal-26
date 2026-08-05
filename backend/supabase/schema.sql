@@ -70,7 +70,9 @@ CREATE TABLE IF NOT EXISTS candidate_profiles (
 CREATE TABLE IF NOT EXISTS candidate_form (
   id                   INTEGER PRIMARY KEY AUTOINCREMENT,
   candidate_id         INTEGER NOT NULL UNIQUE REFERENCES candidate_profiles(id) ON DELETE CASCADE,
+  phone_number         TEXT    NOT NULL,
   attendance           TEXT    NOT NULL,
+  domain_experience    TEXT    NOT NULL,
   join_reason          TEXT    NOT NULL,
   primary_department   TEXT    NOT NULL,
   secondary_department TEXT    NOT NULL,
