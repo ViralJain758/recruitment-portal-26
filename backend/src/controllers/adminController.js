@@ -2,6 +2,7 @@ import {
   fetchAllCandidates,
   updateStatus,
   updateAttendance,
+  assignCandidateSlot,
   resetCandidateQuiz,
   deleteCandidate,
   markQuizAttendance,
@@ -175,6 +176,30 @@ export async function updateCandidateAttendance(req, res) {
     });
     return res.status(500).json({
       message: error.message || "Failed to update attendance",
+    });
+  }
+}
+
+export async function assignCandidateSlotHandler(req, res) {
+  try {
+    const { id } = req.params;
+    const { slot_id } = req.body;
+
+    const data = await assignCandidateSlot(id, slot_id ?? null);
+    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    req.app.get("io")?.to("admin").emit("slots:summary_updated", {
+      candidateId: id,
+      slotId: slot_id ?? null,
+    });
+
+    return res.json({ message: "Candidate slot updated", data });
+  } catch (error) {
+    (req.log || logger).error("API error", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res.status(500).json({
+      message: error.message || "Failed to assign candidate slot",
     });
   }
 }

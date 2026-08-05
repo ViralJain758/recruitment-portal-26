@@ -54,6 +54,25 @@ export async function resetCandidateQuiz(id) {
   return data;
 }
 
+export async function assignCandidateSlot(id, slotId) {
+  if (slotId !== null && slotId !== undefined && slotId !== "") {
+    const slotResult = await db.execute({
+      sql: "SELECT id FROM slots WHERE id = ?",
+      args: [slotId],
+    });
+    if (!slotResult.rows[0]) throw new Error("Slot not found.");
+  }
+
+  await db.execute({
+    sql: `UPDATE candidate_status SET slot_id = ?, updated_at = datetime('now') WHERE candidate_id = ?`,
+    args: [slotId || null, id],
+  });
+
+  const { data } = await findCandidateById(id);
+  if (!data) throw new Error("Candidate not found.");
+  return data;
+}
+
 export async function deleteCandidate(id) {
   // FIX (Bug 1): Resolve the user_id first, then delete refresh_tokens explicitly
   // before removing the user row. Although the schema has ON DELETE CASCADE on
@@ -223,7 +242,9 @@ export async function setGlobalLock(locked) {
 
 const PROFILE_FIELDS = ["full_name", "date_of_birth"];
 const FORM_FIELDS = [
+  "phone_number",
   "attendance",
+  "domain_experience",
   "join_reason",
   "primary_department",
   "secondary_department",

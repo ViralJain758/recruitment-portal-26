@@ -24,18 +24,18 @@ export const TimerCard = () => {
   const percentageLeft = Math.max(0, Math.min(100, (timeLeft / totalDuration) * 100));
 
   // Color logic matching your system benchmarks
-  let iconColor = 'text-emerald-500';
-  let digitsColor = 'text-[#059669]'; // Safe green
-  let containerColor = 'bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20';
+  let iconColor = 'text-[#0067B8]';
+  let digitsColor = 'text-[#0067B8]'; // Brand blue accent
+  let containerColor = 'bg-emerald-50 border-emerald-100 dark:bg-[#27272a] dark:border-[rgba(161,161,170,0.18)]';
 
   if (percentageLeft <= 15) {
     iconColor = 'text-rose-500';
     digitsColor = 'text-[#DC2626]'; // Critical red
-    containerColor = 'bg-rose-50 border-rose-100 dark:bg-rose-500/10 dark:border-rose-500/20 animate-pulse';
+    containerColor = 'bg-rose-50 border-rose-100 dark:bg-[#2a2a2f] dark:border-[rgba(161,161,170,0.22)] animate-pulse';
   } else if (percentageLeft <= 35) {
     iconColor = 'text-amber-500';
     digitsColor = 'text-[#D97706]'; // Warning orange/amber
-    containerColor = 'bg-amber-50 border-amber-100 dark:bg-amber-500/10 dark:border-amber-500/20';
+    containerColor = 'bg-amber-50 border-amber-100 dark:bg-[#2b2b2b] dark:border-[rgba(161,161,170,0.2)]';
   }
 
   return (

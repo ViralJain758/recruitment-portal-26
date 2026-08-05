@@ -3,6 +3,7 @@ import {
   getAllCandidates,
   updateCandidateStatus,
   updateCandidateAttendance,
+  assignCandidateSlotHandler,
   resetCandidateQuizHandler,
   deleteCandidateById,
   markCandidateAttendance,
@@ -52,6 +53,12 @@ router.patch(
   requireAdminSession,
   adminWriteLimiter,
   updateCandidateAttendance,
+);
+router.patch(
+  "/candidates/:id/slot",
+  requireAdminSession,
+  adminWriteLimiter,
+  assignCandidateSlotHandler,
 );
 router.post(
   "/candidates/:id/reset-quiz",

@@ -83,6 +83,18 @@ export default function AuthForm({
         </button>
       </form>
 
+      {!isSignup ? (
+        <div className="auth-extra">
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => (window.location.href = "/forgot-password")}
+          >
+            Forgot password?
+          </button>
+        </div>
+      ) : null}
+
       <div className="panel-footer">
         <span>{footerText}</span>
         <button type="button" className="link-button" onClick={footerAction}>

@@ -463,8 +463,8 @@ export const Quiz = () => {
 
   if (extensionBlockReason && !examCompleted) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#F8FAFC] dark:bg-slate-950 flex items-center justify-center p-6 select-none overscroll-none touch-none">
-        <Card className="max-w-md w-full border-[#FECACA] dark:border-red-900/70 bg-white dark:bg-slate-900 text-center p-8 shadow-2xl">
+      <div className="fixed inset-0 z-50 bg-[#F8FAFC] dark:bg-[#071225] flex items-center justify-center p-6 select-none overscroll-none touch-none">
+        <Card className="max-w-md w-full border-[#FECACA] dark:border-[rgba(161,161,170,0.18)] bg-white dark:bg-[#1a1a1a] text-center p-8 shadow-2xl">
           <div className="mx-auto w-12 h-12 bg-red-50 border border-red-100 rounded-lg flex items-center justify-center text-red-600 mb-4">
             <ShieldAlert className="w-6 h-6" />
           </div>
@@ -536,11 +536,11 @@ export const Quiz = () => {
   // STANDARD VIEWPORT: Shown when everything is operating securely
   // Injected overscroll-none and touch-none layout properties globally
   return (
-    <div className="w-full min-h-[calc(100svh-65px)] lg:h-[calc(100vh-65px)] flex flex-col bg-[#F8FAFC] dark:bg-slate-950 overscroll-none touch-none overflow-hidden select-none">
+    <div className="w-full min-h-[calc(100svh-65px)] lg:h-[calc(100vh-65px)] flex flex-col bg-[#F8FAFC] dark:bg-[#121212] overscroll-none touch-none overflow-hidden select-none">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 lg:pt-5">
-        <div className="bg-white dark:bg-slate-900 border border-[#E5E7EB] dark:border-slate-700 rounded-lg shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="bg-white dark:bg-[#1a1a1a] border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] rounded-lg shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-[#0067B8] dark:text-blue-300 flex items-center justify-center shrink-0">
+            <span className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-white/5 text-[#0067B8] dark:text-slate-100 flex items-center justify-center shrink-0">
               <UserCheck className="w-5 h-5" />
             </span>
             <div className="min-w-0">
@@ -549,7 +549,7 @@ export const Quiz = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="font-mono text-xs font-bold text-[#0067B8] dark:text-blue-300 bg-[#0067B8]/10 dark:bg-blue-500/10 border border-[#0067B8]/15 dark:border-blue-500/20 rounded-lg px-3 py-2 w-fit">
+            <div className="font-mono text-xs font-bold text-[#0067B8] dark:text-slate-100 bg-[#0067B8]/10 dark:bg-white/5 border border-[#0067B8]/15 dark:border-[rgba(161,161,170,0.18)] rounded-lg px-3 py-2 w-fit">
               {candidate.enrollmentNumber || candidate.applicationId}
             </div>
             <TimerCard />
@@ -561,12 +561,12 @@ export const Quiz = () => {
       {(proctorWarning || gazeMessage) && (
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 space-y-2">
           {proctorWarning && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 shadow-sm">
+            <div className="rounded-lg border border-amber-200 dark:border-[rgba(161,161,170,0.18)] bg-amber-50 dark:bg-[#121212] px-4 py-3 text-sm font-medium text-amber-800 dark:text-slate-300 shadow-sm">
               {proctorWarning}
             </div>
           )}
           {gazeMessage && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 shadow-sm">
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 dark:border-[rgba(161,161,170,0.18)] bg-amber-50 dark:bg-[#121212] px-4 py-3 text-sm font-medium text-amber-800 dark:text-slate-300 shadow-sm">
               <EyeOff className="w-4 h-4 shrink-0" />
               {gazeMessage}
             </div>
@@ -579,9 +579,9 @@ export const Quiz = () => {
           <QuestionCard />
         </div>
         <div className="min-h-0 space-y-3 lg:h-full overflow-y-auto flex flex-col pr-0.5">
-          <div className="rounded-xl border border-[#E5E7EB] dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 shadow-sm shrink-0">
+          <div className="rounded-xl border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-white dark:bg-[#1a1a1a] p-2.5 shadow-sm shrink-0">
             <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-500/15 text-[#0067B8] dark:text-blue-300 flex items-center justify-center shrink-0">
+              <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-white/5 text-[#0067B8] dark:text-slate-100 flex items-center justify-center shrink-0">
                 <Camera className="w-3 h-3" />
               </div>
               <div className="min-w-0 flex items-center justify-between gap-2 flex-1">
@@ -589,7 +589,7 @@ export const Quiz = () => {
                 <p className="text-[8px] font-bold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-400">Proctoring</p>
               </div>
             </div>
-            <div className="relative w-full aspect-video overflow-hidden rounded-lg border border-[#E5E7EB] dark:border-slate-700 bg-black/90">
+            <div className="relative w-full aspect-video overflow-hidden rounded-lg border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-black/90">
               <video
                 ref={videoRef}
                 muted
@@ -598,7 +598,7 @@ export const Quiz = () => {
                 className={`absolute inset-0 h-full w-full object-cover ${cameraStream && cameraReady ? '' : 'hidden'}`}
               />
               {!(cameraStream && cameraReady) && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950 px-3 text-center text-xs text-slate-300">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#121212] px-3 text-center text-xs text-slate-300">
                   <span>{cameraError || 'Camera is starting…'}</span>
                   {cameraError && (
                     <button

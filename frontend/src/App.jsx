@@ -7,6 +7,8 @@ import CandidateDetails from "./pages/CandidateDetails";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import ScannerPage from "./pages/ScannerPage";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import { useAuth } from "./hooks/useAuth";
 import { Instructions } from "./pages/Instructions";
 import { Quiz } from "./pages/Quiz";
@@ -67,7 +69,11 @@ function ExamAuthRoute({ authSession, candidateProfile, children }) {
     return <Navigate to="/candidate-details" replace />;
   }
 
-  if (!candidate?.fullName || !candidate?.enrollmentNumber || !hasMatchingIdentity) {
+  if (
+    !candidate?.fullName ||
+    !candidate?.enrollmentNumber ||
+    !hasMatchingIdentity
+  ) {
     return null;
   }
 
@@ -95,74 +101,79 @@ export default function App() {
   return (
     <ExamProvider>
       <Routes>
-      <Route
-        path="/"
-        element={
-          <Navigate to={authSession ? "/dashboard" : "/signup"} replace />
-        }
-      />
+        <Route
+          path="/"
+          element={
+            <Navigate to={authSession ? "/dashboard" : "/signup"} replace />
+          }
+        />
 
-      <Route path="/signup" element={<Signup onSignupSuccess={register} />} />
+        <Route path="/signup" element={<Signup onSignupSuccess={register} />} />
 
-      <Route path="/otp" element={<Otp onSignupSuccess={register} />} />
+        <Route path="/otp" element={<Otp onSignupSuccess={register} />} />
 
-      <Route
-        path="/login"
-        element={
-          <Login
-            onAdminLoginSuccess={() => setIsAdmin(true)}
-            onLoginSuccess={login}
-          />
-        }
-      />
-
-      <Route
-        path="/candidate-details"
-        element={
-          authSession ? (
-            <CandidateDetails
-              registrationData={candidateProfile}
-              onSaved={(response) => saveProfile(response.profile)}
+        <Route
+          path="/login"
+          element={
+            <Login
+              onAdminLoginSuccess={() => setIsAdmin(true)}
+              onLoginSuccess={login}
             />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
+          }
+        />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
-      <Route
-        path="/dashboard"
-        element={
-          authSession ? (
-            hasCompletedCandidateForm(candidateProfile) ? (
-              <Dashboard
-                candidateProfile={candidateProfile}
-                authSession={authSession}
-                saveProfile={saveProfile}
-                logout={logout}
+        <Route
+          path="/candidate-details"
+          element={
+            authSession ? (
+              <CandidateDetails
+                registrationData={candidateProfile}
+                onSaved={(response) => saveProfile(response.profile)}
               />
             ) : (
-              <Navigate to="/candidate-details" replace />
+              <Navigate to="/login" replace />
             )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
+          }
+        />
 
-      <Route
-        path="/admin-dashboard"
-        element={
-          isAdmin ? <AdminDashboard /> : <Navigate to="/login" replace />
-        }
-      />
+        <Route
+          path="/dashboard"
+          element={
+            authSession ? (
+              hasCompletedCandidateForm(candidateProfile) ? (
+                <Dashboard
+                  candidateProfile={candidateProfile}
+                  authSession={authSession}
+                  saveProfile={saveProfile}
+                  logout={logout}
+                />
+              ) : (
+                <Navigate to="/candidate-details" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
-      <Route path="/scanner" element={<ScannerPage />} />
+        <Route
+          path="/admin-dashboard"
+          element={
+            isAdmin ? <AdminDashboard /> : <Navigate to="/login" replace />
+          }
+        />
+
+        <Route path="/scanner" element={<ScannerPage />} />
         <Route path="/result" element={<Result />} />
         <Route
           path="/instruction"
           element={
-            <ExamAuthRoute authSession={authSession} candidateProfile={candidateProfile}>
+            <ExamAuthRoute
+              authSession={authSession}
+              candidateProfile={candidateProfile}
+            >
               <Instructions />
             </ExamAuthRoute>
           }
@@ -170,7 +181,10 @@ export default function App() {
         <Route
           path="/instructions"
           element={
-            <ExamAuthRoute authSession={authSession} candidateProfile={candidateProfile}>
+            <ExamAuthRoute
+              authSession={authSession}
+              candidateProfile={candidateProfile}
+            >
               <Instructions />
             </ExamAuthRoute>
           }
@@ -178,7 +192,10 @@ export default function App() {
         <Route
           path="/quiz"
           element={
-            <ExamAuthRoute authSession={authSession} candidateProfile={candidateProfile}>
+            <ExamAuthRoute
+              authSession={authSession}
+              candidateProfile={candidateProfile}
+            >
               <Quiz />
             </ExamAuthRoute>
           }

@@ -13,7 +13,7 @@ export const Card = ({ children, className = '', ...props }) => {
         y: { duration: 0.2 },
         scale: { duration: 0.2 }
       }}
-      className={`bg-white border border-[#E5E7EB] rounded-lg p-6 shadow-sm dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 ${className}`}
+      className={`bg-white border border-[#E5E7EB] rounded-lg p-6 shadow-sm dark:bg-[#1a1a1a] dark:border-[rgba(161,161,170,0.18)] dark:text-slate-100 ${className}`}
       {...props}
     >
       {children}

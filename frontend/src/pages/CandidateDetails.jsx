@@ -9,9 +9,11 @@ import useFormFields from "../hooks/useFormFields";
 const initialDetails = {
   applicationNumber: "",
   email: "",
+  phoneNumber: "",
   name: "",
   dob: "",
   attendance: "",
+  domainExperience: "",
   joinReason: "",
   primaryDepartment: "",
   secondaryDepartment: "",
@@ -23,7 +25,9 @@ const profileMap = {
   applicationNumber: "application_number",
   name: "full_name",
   dob: "date_of_birth",
+  phoneNumber: "phone_number",
   attendance: "attendance",
+  domainExperience: "domain_experience",
   joinReason: "join_reason",
   primaryDepartment: "primary_department",
   secondaryDepartment: "secondary_department",
@@ -51,6 +55,7 @@ const departmentOptions = [
 const topFields = [
   ["candidate-name", "name", "Name", "text", "Enter your full name"],
   ["candidate-email", "email", "Email", "email", "Enter email address"],
+  ["candidate-phone", "phoneNumber", "Phone Number", "tel", "Enter phone number"],
   [
     "application-number",
     "applicationNumber",
@@ -80,6 +85,14 @@ const departmentFields = [
     "Your Secondary Department",
     "department-select",
   ],
+];
+
+const domainExperienceField = [
+  "domain-experience",
+  "domainExperience",
+  "What is your experience in the preferred domain?",
+  "textarea",
+  "Share your experience in the preferred domain",
 ];
 
 export default function CandidateDetails({
@@ -205,6 +218,18 @@ export default function CandidateDetails({
     >
       <form className="auth-form candidate-form" onSubmit={handleSubmit}>
         <div className="details-grid">{topFields.map(renderField)}</div>
+
+        <FormField
+          as="textarea"
+          id={domainExperienceField[0]}
+          label={domainExperienceField[2]}
+          name={domainExperienceField[1]}
+          onChange={handleChange}
+          placeholder={domainExperienceField[4]}
+          required
+          rows="4"
+          value={values.domainExperience}
+        />
 
         <FormField
           as="textarea"
