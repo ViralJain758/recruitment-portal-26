@@ -138,6 +138,13 @@ export const Quiz = () => {
   const extensionRecheckInProgressRef = useRef(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  // Every getUserMedia() call for this page is funneled through this queue so there is
+  // never more than one in flight at once. This ref lives at component scope (not inside
+  // the effect), so it survives React 18 StrictMode's dev-mode double-invoke of effects on
+  // first mount — without it, that double-invoke fires two overlapping camera requests
+  // back-to-back, which can wedge the browser's camera pipeline so neither one ever
+  // resolves, leaving the UI stuck on "Camera is starting…" forever.
+  const cameraQueueRef = useRef(Promise.resolve());
   
   // Track if the app is actively in fullscreen mode
   const [isFullscreenActive, setIsFullscreenActive] = useState(
@@ -193,91 +200,149 @@ export const Quiz = () => {
     if (!examStarted || examCompleted || !cameraRequested) return;
 
     let cancelled = false;
+    let retryTimeoutId = null;
 
-    const startCamera = async () => {
-      setCameraReady(false);
+    // A hard page reload mid-test destroys and recreates this whole component, so the
+    // browser is asked for the camera again from scratch. Right after a reload the OS/
+    // browser sometimes hasn't fully released the device from the previous page yet,
+    // which makes the very first getUserMedia() call fail transiently (NotReadableError /
+    // AbortError / TrackStartError). Previously that dropped straight to an error state
+    // and required the candidate to click "Retry camera" manually. To make the camera
+    // come back on its own, transient failures are retried silently in the background
+    // for a few seconds before we ever show the manual retry button.
+    const MAX_AUTO_RETRIES = 8;
+    const RETRY_DELAY_MS = 600;
+    // getUserMedia() doesn't just reject on a busy/stuck device in every browser — it can
+    // simply hang and never settle at all, which previously left the UI stuck on "Camera
+    // is starting…" forever with no retry ever kicking in. Racing each call against a
+    // timeout guarantees we always move on to a retry instead of waiting indefinitely.
+    const PER_ATTEMPT_TIMEOUT_MS = 3500;
+
+    const tryGetStream = (constraints) => {
+      const run = () => {
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = window.setTimeout(
+            () => reject(new DOMException('Timed out waiting for camera.', 'TimeoutError')),
+            PER_ATTEMPT_TIMEOUT_MS
+          );
+        });
+
+        const realPromise = navigator.mediaDevices.getUserMedia(constraints);
+
+        const winner = Promise.race([realPromise, timeoutPromise]).finally(() => {
+          window.clearTimeout(timeoutId);
+        });
+
+        // If getUserMedia() eventually resolves *after* we've already given up on it (the
+        // timeout won the race), don't leave that stream dangling — it would keep the
+        // camera locked and could block every attempt after it. Release it immediately.
+        winner.catch(() => {
+          realPromise
+            .then((lateStream) => lateStream.getTracks().forEach((track) => track.stop()))
+            .catch(() => {});
+        });
+
+        return winner;
+      };
+
+      // Chain onto the shared queue so this call only actually fires once every earlier
+      // queued call (from this or an earlier, StrictMode-doubled effect run) has settled.
+      const queued = cameraQueueRef.current.then(run, run);
+      cameraQueueRef.current = queued.catch(() => {});
+      return queued;
+    };
+
+    const attachStream = async (stream) => {
+      streamRef.current = stream;
+      setCameraStream(stream);
       setCameraError('');
+
+      if (videoRef.current) {
+        try {
+          videoRef.current.srcObject = stream;
+          videoRef.current.muted = true;
+          videoRef.current.playsInline = true;
+          videoRef.current.onloadedmetadata = () => {
+            if (!cancelled) {
+              setCameraReady(true);
+            }
+          };
+          await videoRef.current.play();
+          if (!cancelled) {
+            setCameraReady(true);
+          }
+        } catch (playError) {
+          setCameraReady(false);
+          setCameraError('Camera preview could not be started.');
+        }
+      }
+    };
+
+    const acquireCamera = async (attempt = 0) => {
+      if (cancelled) return;
+      setCameraReady(false);
 
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError('Camera access is not supported in this browser.');
         return;
       }
 
-      const tryGetStream = async (constraints) => {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        return stream;
-      };
+      const attempts = [
+        { video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
+        { video: { width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
+        { video: true, audio: false },
+      ];
 
-      try {
-        let stream;
-        const attempts = [
-          { video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
-          { video: { width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
-          { video: true, audio: false },
-        ];
-
-        for (const constraints of attempts) {
-          try {
-            stream = await tryGetStream(constraints);
-            break;
-          } catch (error) {
-            if (constraints === attempts[attempts.length - 1]) {
-              throw error;
-            }
-          }
+      let stream;
+      let lastError;
+      for (const constraints of attempts) {
+        try {
+          stream = await tryGetStream(constraints);
+          break;
+        } catch (error) {
+          lastError = error;
         }
+      }
 
-        if (!stream) {
-          throw new Error('No camera stream available.');
-        }
+      if (cancelled) {
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
+      if (!stream) {
+        const errorName = lastError?.name || '';
+        const isPermissionError =
+          errorName === 'NotAllowedError' ||
+          errorName === 'PermissionDeniedError' ||
+          errorName === 'SecurityError';
+
+        if (!isPermissionError && attempt < MAX_AUTO_RETRIES) {
+          // Device likely still tied up releasing from the previous session — back off
+          // briefly and try again without bothering the candidate.
+          retryTimeoutId = window.setTimeout(() => {
+            if (!cancelled) acquireCamera(attempt + 1);
+          }, RETRY_DELAY_MS);
           return;
         }
 
-        streamRef.current = stream;
-        setCameraStream(stream);
-        setCameraError('');
-
-        if (videoRef.current) {
-          try {
-            videoRef.current.srcObject = stream;
-            videoRef.current.muted = true;
-            videoRef.current.playsInline = true;
-            videoRef.current.onloadedmetadata = () => {
-              if (!cancelled) {
-                setCameraReady(true);
-              }
-            };
-            await videoRef.current.play();
-            if (!cancelled) {
-              setCameraReady(true);
-            }
-          } catch (playError) {
-            setCameraReady(false);
-            setCameraError('Camera preview could not be started.');
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setCameraError('Camera permission is required for proctoring.');
-          setCameraReady(false);
-        }
+        setCameraError(
+          isPermissionError
+            ? 'Camera permission is required for proctoring.'
+            : 'Camera permission was not granted or the device is unavailable.'
+        );
+        setCameraReady(false);
+        return;
       }
+
+      await attachStream(stream);
     };
 
-    const fallbackTimer = window.setTimeout(() => {
-      if (!cancelled && !cameraReady && !cameraStream) {
-        setCameraError('Camera permission was not granted or the device is unavailable.');
-      }
-    }, 4000);
-
-    startCamera();
+    acquireCamera();
 
     return () => {
-      window.clearTimeout(fallbackTimer);
       cancelled = true;
+      if (retryTimeoutId) window.clearTimeout(retryTimeoutId);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -597,6 +662,15 @@ export const Quiz = () => {
                 autoPlay
                 className={`absolute inset-0 h-full w-full object-cover ${cameraStream && cameraReady ? '' : 'hidden'}`}
               />
+              {cameraStream && cameraReady && (
+                <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-[3px] backdrop-blur-sm">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                  </span>
+                  <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-white">Rec</span>
+                </div>
+              )}
               {!(cameraStream && cameraReady) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#121212] px-3 text-center text-xs text-slate-300">
                   <span>{cameraError || 'Camera is starting…'}</span>
