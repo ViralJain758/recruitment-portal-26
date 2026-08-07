@@ -181,6 +181,37 @@ body.drawer-open {
   gap: 8px;
 }
 
+.deadline-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+}
+
+.deadline-editor label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-ink-soft);
+  white-space: nowrap;
+}
+
+.deadline-editor input[type="datetime-local"] {
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--admin-ink);
+  background: var(--admin-surface-alt);
+}
+
+.deadline-editor .btn {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
 /* =====================
    BUTTONS
    ===================== */

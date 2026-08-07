@@ -15,9 +15,23 @@ import { useCandidateFilters } from "../hooks/useCandidateFilters";
 import { logoutSession } from "../lib/api";
 import { calculateStats } from "../utils/candidateHelpers";
 
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in local time; Date's
+// toISOString() gives UTC, so build the string from local getters instead.
+function toDatetimeLocalValue(dateLike) {
+  if (!dateLike) return "";
+  const d = new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [deadlineDraft, setDeadlineDraft] = useState("");
+  const [deadlineDirty, setDeadlineDirty] = useState(false);
 
   const {
     candidates,
@@ -32,6 +46,9 @@ export default function AdminDashboard() {
     globalLocked,
     globalLockLoading,
     toggleGlobalLock,
+    registrationDeadline,
+    deadlineLoading,
+    updateRegistrationDeadline,
     slotSummary,
     slotLoading,
     runDistributeSlots,
@@ -69,6 +86,22 @@ export default function AdminDashboard() {
       window.location.reload();
     }
   }, []);
+
+  // Keep the draft input in sync with the server value, but don't clobber
+  // the admin's in-progress edit once they've started changing it.
+  useEffect(() => {
+    if (!deadlineDirty && registrationDeadline) {
+      setDeadlineDraft(toDatetimeLocalValue(registrationDeadline));
+    }
+  }, [registrationDeadline, deadlineDirty]);
+
+  const handleSaveDeadline = async () => {
+    if (!deadlineDraft) return;
+    const result = await updateRegistrationDeadline(
+      new Date(deadlineDraft).toISOString(),
+    );
+    if (result) setDeadlineDirty(false);
+  };
 
   useEffect(() => {
     const hadDarkTheme = document.documentElement.classList.contains("dark");
@@ -181,6 +214,32 @@ export default function AdminDashboard() {
                 </>
               )}
             </button>
+
+            {/* ── Registration & edit deadline ── */}
+            <div className="deadline-editor">
+              <label htmlFor="registration-deadline-input">
+                Registration deadline
+              </label>
+              <input
+                id="registration-deadline-input"
+                type="datetime-local"
+                value={deadlineDraft}
+                onChange={(e) => {
+                  setDeadlineDraft(e.target.value);
+                  setDeadlineDirty(true);
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={handleSaveDeadline}
+                disabled={deadlineLoading || !deadlineDraft}
+                title="Save the registration & edit deadline"
+              >
+                {deadlineLoading ? "Saving…" : "Save"}
+              </button>
+            </div>
+
             <button
               className="btn btn--secondary"
               onClick={() => navigate("/scanner")}

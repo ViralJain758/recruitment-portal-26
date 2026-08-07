@@ -12,6 +12,8 @@ import {
   updateCandidateDetails,
   getGlobalLock,
   setGlobalLock,
+  getRegistrationDeadline,
+  setRegistrationDeadline,
   distributeSlots,
   getSlotSummary,
   clearSlots,
@@ -409,6 +411,51 @@ export async function setGlobalLockStatus(req, res) {
       stack: error.stack,
     });
     return res.status(500).json({ message: "Failed to update global lock" });
+  }
+}
+
+// ── Registration & edit deadline ───────────────────────────────────────────
+
+export async function getRegistrationDeadlineStatus(req, res) {
+  try {
+    const deadline = await getRegistrationDeadline();
+    return res.json({ deadline });
+  } catch (error) {
+    (req.log || logger).error("API error", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res
+      .status(500)
+      .json({ message: "Failed to get registration deadline" });
+  }
+}
+
+export async function setRegistrationDeadlineStatus(req, res) {
+  try {
+    const { deadline } = req.body;
+
+    if (typeof deadline !== "string" || Number.isNaN(Date.parse(deadline))) {
+      return res
+        .status(400)
+        .json({ message: "`deadline` must be a valid date/time string" });
+    }
+
+    await setRegistrationDeadline(deadline);
+    req.app.get("io")?.to("admin").emit("deadline:updated", { deadline });
+
+    return res.json({
+      message: "Registration deadline updated",
+      deadline,
+    });
+  } catch (error) {
+    (req.log || logger).error("API error", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res
+      .status(500)
+      .json({ message: "Failed to update registration deadline" });
   }
 }
 

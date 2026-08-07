@@ -180,6 +180,17 @@ export function setGlobalLock(locked) {
   });
 }
 
+export function getRegistrationDeadline() {
+  return request("/api/admin/registration-deadline");
+}
+
+export function setRegistrationDeadline(deadline) {
+  return request("/api/admin/registration-deadline", {
+    method: "PATCH",
+    body: JSON.stringify({ deadline }),
+  });
+}
+
 export async function getDashboard(signal) {
   const response = await fetch(`${apiBaseUrl}/dashboard`, {
     credentials: "include",

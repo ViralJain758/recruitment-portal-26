@@ -95,6 +95,41 @@ const domainExperienceField = [
   "Share your experience in the preferred domain",
 ];
 
+const WORD_LIMIT = 150;
+const PHONE_LENGTH = 10;
+
+// Textarea/long-answer fields that should be capped at WORD_LIMIT words
+const wordLimitedFields = [
+  "domainExperience",
+  "joinReason",
+  "otherSocieties",
+  "recruitReason",
+];
+
+const countWords = (text) => {
+  const trimmed = text.trim();
+  return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
+};
+
+// Trims text down to at most `limit` words while preserving original spacing
+const limitWords = (text, limit) => {
+  const wordPattern = /\S+\s*/g;
+  let matchCount = 0;
+  let endIndex = text.length;
+  let match;
+
+  while ((match = wordPattern.exec(text)) !== null) {
+    matchCount += 1;
+    if (matchCount === limit) {
+      endIndex = match.index + match[0].length;
+      break;
+    }
+  }
+
+  if (matchCount <= limit) return text;
+  return text.slice(0, endIndex).trimEnd();
+};
+
 export default function CandidateDetails({
   registrationData,
   onBackToSignup,
@@ -116,8 +151,31 @@ export default function CandidateDetails({
           registrationData?.[profileKey] ?? "",
         ]),
       ),
+      phoneNumber: (registrationData?.phone_number ?? "")
+        .replace(/\D/g, "")
+        .slice(0, PHONE_LENGTH),
     });
   }, [registrationData, setValues]);
+
+  // Central change handler: enforces the 10-digit phone number rule and the
+  // 150-word cap on long-answer fields, otherwise falls back to normal change.
+  const handleFieldChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === "phoneNumber") {
+      const digitsOnly = value.replace(/\D/g, "").slice(0, PHONE_LENGTH);
+      setValues((prev) => ({ ...prev, phoneNumber: digitsOnly }));
+      return;
+    }
+
+    if (wordLimitedFields.includes(name)) {
+      const limited = limitWords(value, WORD_LIMIT);
+      setValues((prev) => ({ ...prev, [name]: limited }));
+      return;
+    }
+
+    handleChange(e);
+  };
 
   const renderField = ([id, name, label, type, placeholder]) => {
     let options;
@@ -132,7 +190,7 @@ export default function CandidateDetails({
 
     // When primary dept changes, clear secondary if it matches
     const onChange = (e) => {
-      handleChange(e);
+      handleFieldChange(e);
       if (
         name === "primaryDepartment" &&
         e.target.value === values.secondaryDepartment
@@ -140,6 +198,14 @@ export default function CandidateDetails({
         setValues((prev) => ({ ...prev, secondaryDepartment: "" }));
       }
     };
+
+    const extraProps = {};
+    if (name === "phoneNumber") {
+      extraProps.inputMode = "numeric";
+      extraProps.pattern = "[0-9]{10}";
+      extraProps.maxLength = PHONE_LENGTH;
+      extraProps.helperText = `${values.phoneNumber.length}/${PHONE_LENGTH} digits`;
+    }
 
     return (
       <FormField
@@ -155,6 +221,7 @@ export default function CandidateDetails({
           type === "select" || type === "department-select" ? undefined : type
         }
         value={values[name]}
+        {...extraProps}
       />
     );
   };
@@ -166,6 +233,11 @@ export default function CandidateDetails({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (values.phoneNumber.length !== PHONE_LENGTH) {
+      setError(`Phone number must be exactly ${PHONE_LENGTH} digits.`);
+      return;
+    }
 
     if (
       values.primaryDepartment &&
@@ -224,11 +296,12 @@ export default function CandidateDetails({
           id={domainExperienceField[0]}
           label={domainExperienceField[2]}
           name={domainExperienceField[1]}
-          onChange={handleChange}
+          onChange={handleFieldChange}
           placeholder={domainExperienceField[4]}
           required
           rows="4"
           value={values.domainExperience}
+          helperText={`${countWords(values.domainExperience)}/${WORD_LIMIT} words`}
         />
 
         <FormField
@@ -236,11 +309,12 @@ export default function CandidateDetails({
           id="join-reason"
           label="Why do you want to join MLSC?"
           name="joinReason"
-          onChange={handleChange}
+          onChange={handleFieldChange}
           placeholder="Write your reason"
           required
           rows="4"
           value={values.joinReason}
+          helperText={`${countWords(values.joinReason)}/${WORD_LIMIT} words`}
         />
 
         <div className="details-grid">{departmentFields.map(renderField)}</div>
@@ -249,11 +323,12 @@ export default function CandidateDetails({
           id="other-societies"
           label="Which other Societies are you enrolling or are currently in except MLSC?"
           name="otherSocieties"
-          onChange={handleChange}
+          onChange={handleFieldChange}
           placeholder="List other societies"
           required
           rows="3"
           value={values.otherSocieties}
+          helperText={`${countWords(values.otherSocieties)}/${WORD_LIMIT} words`}
         />
 
         <FormField
@@ -261,11 +336,12 @@ export default function CandidateDetails({
           id="recruit-reason"
           label="Why should we recruit you?"
           name="recruitReason"
-          onChange={handleChange}
+          onChange={handleFieldChange}
           placeholder="Share why you are a strong fit"
           required
           rows="4"
           value={values.recruitReason}
+          helperText={`${countWords(values.recruitReason)}/${WORD_LIMIT} words`}
         />
 
         <div className="form-actions">

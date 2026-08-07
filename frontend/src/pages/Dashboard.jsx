@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useExam } from "../context/ExamContext";
 import { ThemeToggle } from "../components/quiz/common/ThemeToggle";
-import { updateCandidateDetails } from "../lib/api";
+import { updateCandidateDetails, getRegistrationDeadline } from "../lib/api";
 import mlscLogo from "../assets/MLSC-logo.png";
 import "./CandidateDashboard.css";
 
@@ -99,6 +99,41 @@ const SUPPORT = {
   phone: "+91 9720257315",
   phone2: "+91 9914589960",
 };
+
+// ─── Registration & edit deadline ──────────────────────────────────────────
+// Candidates can register/edit their application details until this
+// date/time. The actual value now lives in the backend (app_settings) and
+// is editable from the admin dashboard; this is only a fallback used until
+// the real value has loaded from the server.
+const DEFAULT_REGISTRATION_DEADLINE = new Date("2026-08-31T23:59:59");
+
+function formatDeadline(date) {
+  return date.toLocaleString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+// Live countdown state against the registration deadline — recomputes every
+// minute so the banner flips from "time left" to "closed" without a refresh.
+function useDeadlineState(deadline) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const msLeft = deadline.getTime() - now.getTime();
+  const isPast = msLeft <= 0;
+  const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+
+  return { isPast, daysLeft };
+}
 
 const FAQS = [
   {
@@ -692,6 +727,9 @@ export default function Dashboard({
   const { setCandidate } = useExam();
   const [profile, setProfile] = useState(candidateProfile ?? {});
   const [showEdit, setShowEdit] = useState(false);
+  const [registrationDeadline, setRegistrationDeadline] = useState(
+    DEFAULT_REGISTRATION_DEADLINE,
+  );
   const { toasts, push, dismiss } = useToasts();
 
   const slotInfo = profile.slot_id
@@ -710,6 +748,24 @@ export default function Dashboard({
       setProfile(candidateProfile);
     }
   }, [candidateProfile]);
+
+  // Load the admin-configured registration/edit deadline. Keeps the
+  // hardcoded default above as a fallback if the request fails.
+  useEffect(() => {
+    let cancelled = false;
+    getRegistrationDeadline()
+      .then((response) => {
+        if (!cancelled && response?.deadline) {
+          setRegistrationDeadline(new Date(response.deadline));
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load registration deadline:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fire success toast once on arrival from CandidateDetails, then clear state
   useEffect(() => {
@@ -733,6 +789,9 @@ export default function Dashboard({
   const isSubmitted = Boolean(profile.quiz_submitted_at);
   const isSlotActive = Boolean(slotInfo?.isActive);
   const canEnterTest = isPresent && isSlotActive && !isSubmitted;
+  const { isPast: isDeadlinePast, daysLeft: deadlineDaysLeft } =
+    useDeadlineState(registrationDeadline);
+  const isEditDisabled = isLocked || isDeadlinePast;
 
   function handleEnterTest() {
     if (isSubmitted || !canEnterTest) return;
@@ -833,6 +892,38 @@ export default function Dashboard({
         </div>
         <div className="cd-welcome-avatar" aria-hidden="true">
           {initials}
+        </div>
+      </div>
+
+      {/* ── Registration / edit deadline banner ── */}
+      <div
+        className={`cd-deadline-banner ${
+          isDeadlinePast ? "cd-deadline-banner--closed" : ""
+        }`}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        <div>
+          <strong>
+            {isDeadlinePast
+              ? "Registration & edit window closed"
+              : "Registration & edit deadline"}
+          </strong>
+          <span>
+            {isDeadlinePast
+              ? `The deadline was ${formatDeadline(registrationDeadline)}. Editing is no longer available.`
+              : `You can register or edit your details until ${formatDeadline(
+                  registrationDeadline,
+                )} (${deadlineDaysLeft} day${deadlineDaysLeft === 1 ? "" : "s"} left).`}
+          </span>
         </div>
       </div>
 
@@ -1095,9 +1186,16 @@ export default function Dashboard({
 
         <div className="cd-card-actions">
           <button
-            className={`cd-btn ${isLocked ? "cd-btn--ghost" : "cd-btn--primary"}`}
-            onClick={() => setShowEdit(true)}
-            title={isLocked ? "Form has been locked by admin" : undefined}
+            className={`cd-btn ${isEditDisabled ? "cd-btn--ghost" : "cd-btn--primary"}`}
+            onClick={() => !isEditDisabled && setShowEdit(true)}
+            disabled={isEditDisabled}
+            title={
+              isLocked
+                ? "Form has been locked by admin"
+                : isDeadlinePast
+                  ? "The registration & edit deadline has passed"
+                  : undefined
+            }
           >
             {isLocked ? (
               <>
@@ -1112,6 +1210,20 @@ export default function Dashboard({
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
                 Form Locked
+              </>
+            ) : isDeadlinePast ? (
+              <>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                Deadline Passed
               </>
             ) : (
               <>
