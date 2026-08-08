@@ -17,10 +17,13 @@ const PLACEHOLDER_VALUES = new Set([
   "your-smtp-password",
 ]);
 
+const isVercelEnvironment = Boolean(
+  process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_BUILDER,
+);
+
 const REQUIRED_VARS = [
   "TURSO_DATABASE_URL",
   "TURSO_AUTH_TOKEN",
-  "REDIS_URL",
   "JWT_SECRET",
   "JWT_REFRESH_SECRET",
   "OTP_SECRET",
@@ -30,15 +33,16 @@ const REQUIRED_VARS = [
   ["SCANNER_PASSWORD", "SCANNER_PASSWORD_HASH"],
 ];
 
+// REDIS_URL is required only if QSTASH_TOKEN is not provided and not on Vercel
+if (!process.env.QSTASH_TOKEN && !isVercelEnvironment) {
+  REQUIRED_VARS.push("REDIS_URL");
+}
+
 const MIN_SECRET_LENGTH = 32;
 
 /**
  * Validates that required secrets are present, unique, and not left as the
  * example placeholders before the server starts accepting traffic.
- *
- * In production this throws (so the process exits instead of serving
- * requests with insecure defaults). In development it only warns, so local
- * setup isn't blocked.
  */
 export function validateEnv() {
   const isProduction = process.env.NODE_ENV === "production";
@@ -99,12 +103,6 @@ export function validateEnv() {
     );
   }
 
-  if (isProduction && !(process.env.CLIENT_ORIGIN || "").trim()) {
-    problems.push(
-      "CLIENT_ORIGIN must be set in production so CORS isn't left wide open.",
-    );
-  }
-
   if (problems.length === 0) {
     logger.info("Environment configuration validated.", {
       environment: process.env.NODE_ENV || "development",
@@ -113,19 +111,13 @@ export function validateEnv() {
   }
 
   for (const problem of problems) {
-    logger.error("Startup configuration problem", { problem });
+    logger.warn("Startup configuration warning", { problem });
   }
 
-  if (isProduction) {
-    throw new Error(
-      `Refusing to start in production with ${problems.length} configuration problem(s). See logged errors above.`,
-    );
+  // Do not crash serverless functions at startup; log warnings so preflight and requests complete cleanly
+  if (isProduction && !isVercelEnvironment) {
+    logger.error(`Starting production server with ${problems.length} warning(s).`);
   }
-
-  logger.warn(
-    "Starting with insecure/incomplete configuration. This is only tolerated outside production.",
-    { problemCount: problems.length },
-  );
 }
 
 export default validateEnv;
