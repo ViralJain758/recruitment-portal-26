@@ -480,6 +480,58 @@ export const Quiz = () => {
     const handleContextMenu = (e) => {
       e.preventDefault();
     };
+
+    // KEYBOARD LOCKDOWN: Best-effort blocking of shortcuts that open, close,
+    // or switch browser tabs/windows, plus devtools/reload/print/save/back-
+    // navigation shortcuts. Note this is a genuine best effort, not a
+    // guarantee — Chrome, Firefox, and Safari deliberately reserve some of
+    // these (Ctrl/Cmd+T, +N, +W, Ctrl+Tab, Alt+Tab, Cmd+Tab) at the browser-
+    // chrome or OS level specifically so a webpage's JavaScript can never
+    // trap the user inside a tab. Those keep working no matter what a page
+    // does; only the shortcuts a page is actually allowed to intercept
+    // (devtools, reload, print, save, view-source, back/forward nav) are
+    // reliably stopped here. A switch away is still caught afterwards by
+    // the visibility/blur/fullscreen listeners above.
+    const handleKeyDown = (e) => {
+      const key = e.key?.toLowerCase();
+      const ctrlOrCmd = e.ctrlKey || e.metaKey;
+
+      const blockedCombos =
+        // New tab / window / reopen closed tab / close tab
+        (ctrlOrCmd && ['t', 'n', 'w'].includes(key)) ||
+        (ctrlOrCmd && e.shiftKey && ['t', 'n'].includes(key)) ||
+        // Switch tabs
+        (ctrlOrCmd && key === 'tab') ||
+        (e.altKey && key === 'tab') ||
+        // DevTools
+        key === 'f12' ||
+        (ctrlOrCmd && e.shiftKey && ['i', 'j', 'c'].includes(key)) ||
+        // View source / save / print / reload
+        (ctrlOrCmd && key === 'u') ||
+        (ctrlOrCmd && key === 's') ||
+        (ctrlOrCmd && key === 'p') ||
+        (ctrlOrCmd && key === 'r') ||
+        key === 'f5' ||
+        // Fullscreen toggle
+        key === 'f11' ||
+        // Back/forward navigation
+        (e.altKey && ['arrowleft', 'arrowright'].includes(key)) ||
+        (key === 'backspace' && !['input', 'textarea'].includes(document.activeElement?.tagName?.toLowerCase()));
+
+      if (blockedCombos) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    // Adds browser-native friction to closing the tab, reloading, or
+    // navigating away mid-exam. Browsers show their own generic confirmation
+    // text regardless of the message passed here.
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleBlur);
@@ -491,6 +543,8 @@ export const Quiz = () => {
     // Bind trackpad defensive listeners with passive flag set to false to support preventDefault()
     window.addEventListener('wheel', handleWheelZoom, { passive: false });
     document.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -502,6 +556,8 @@ export const Quiz = () => {
       
       window.removeEventListener('wheel', handleWheelZoom);
       document.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [examStarted, examCompleted, setExamPaused]);
 

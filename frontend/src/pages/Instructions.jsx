@@ -227,6 +227,13 @@ export const Instructions = () => {
               <li className="flex items-start gap-3">
                 <X className="w-4 h-4 text-red-500 mt-1 shrink-0" />
                 <span>
+                  Shortcuts for new tabs, devtools, reload, print, and
+                  back/forward navigation are blocked during the exam.
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <X className="w-4 h-4 text-red-500 mt-1 shrink-0" />
+                <span>
                   Your screen and webcam are recorded for the full duration of
                   the exam.
                 </span>
