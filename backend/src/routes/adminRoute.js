@@ -24,6 +24,8 @@ import {
   setSlotTimeHandler,
   addDayHandler,
   removeDayHandler,
+  addSlotHandler,
+  removeSlotHandler,
   getQuizQuestionBankHandler,
   upsertQuizQuestionBankHandler,
   createQuizQuestionHandler,
