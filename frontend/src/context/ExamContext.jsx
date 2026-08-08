@@ -51,6 +51,13 @@ export const ExamProvider = ({ children }) => {
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [securityViolationType, setSecurityViolationType] = useState("");
   const [cameraAccess, setCameraAccess] = useState(false);
+  const [screenRecordingConsent, setScreenRecordingConsent] = useState(() => {
+    return localStorage.getItem("mlsc_screen_consent") === "true";
+  });
+  const [recordingSeconds, setRecordingSeconds] = useState(() => {
+    const saved = localStorage.getItem("mlsc_recording_seconds");
+    return saved ? parseInt(saved, 10) : 0;
+  });
 
   // Computed question helper maps cleanly to the active DB paper.
   const currentQuestion = questions[currentQuestionIndex] || null;
@@ -80,6 +87,12 @@ export const ExamProvider = ({ children }) => {
   useEffect(() => {
     localStorage.setItem("mlsc_time_left", timeLeft);
   }, [timeLeft]);
+  useEffect(() => {
+    localStorage.setItem("mlsc_screen_consent", screenRecordingConsent);
+  }, [screenRecordingConsent]);
+  useEffect(() => {
+    localStorage.setItem("mlsc_recording_seconds", recordingSeconds);
+  }, [recordingSeconds]);
 
   useEffect(() => {
     if (questions.length > 0) {
@@ -145,6 +158,7 @@ export const ExamProvider = ({ children }) => {
     setShowSecurityModal(false);
     setExamPaused(false);
     setExamCompleted(false);
+    setRecordingSeconds(0);
     setExamStarted(true);
   };
 
@@ -186,9 +200,13 @@ export const ExamProvider = ({ children }) => {
       "mlsc_review",
       "mlsc_time_left",
       "mlsc_warnings",
+      "mlsc_screen_consent",
+      "mlsc_recording_seconds",
     ].forEach((key) => localStorage.removeItem(key));
 
     setCandidate(null);
+    setScreenRecordingConsent(false);
+    setRecordingSeconds(0);
     setExamStarted(false);
     setExamCompleted(false);
     setQuestions([]);
@@ -234,6 +252,10 @@ export const ExamProvider = ({ children }) => {
         currentQuestion,
         cameraAccess,
         setCameraAccess,
+        screenRecordingConsent,
+        setScreenRecordingConsent,
+        recordingSeconds,
+        setRecordingSeconds,
       }}
     >
       {children}

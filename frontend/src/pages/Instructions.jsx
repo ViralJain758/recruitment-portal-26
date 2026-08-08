@@ -1,24 +1,28 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Award, Check, ShieldAlert, UserCheck, X } from "lucide-react";
+import { Award, Check, ScreenShare, ShieldAlert, UserCheck, X } from "lucide-react";
 import { useExam } from "../context/ExamContext";
 import { PageContainer } from "../components/quiz/layout/PageContainer";
 import { Checkbox } from "../components/quiz/common/Checkbox";
 import { Button } from "../components/quiz/common/Button";
 import { Card } from "../components/quiz/common/Card";
 import { ThemeToggle } from "../components/quiz/common/ThemeToggle";
+import { ScreenRecordingModal } from "../components/quiz/instructions/ScreenRecordingModal";
 import { getQuizQuestions } from "../lib/api";
 import mlsaLogo from "../assets/MLSC-logo.png";
 
 export const Instructions = () => {
   const { candidate, setExamStarted, questions } = useExam();
   const { cameraAccess, setCameraAccess } = useExam();
+  const { screenRecordingConsent, setScreenRecordingConsent } = useExam();
   const navigate = useNavigate();
   const [agreed, setAgreed] = useState(false);
   const [isStartingExam, setIsStartingExam] = useState(false);
   const [startError, setStartError] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [requestingCamera, setRequestingCamera] = useState(false);
+  const [showScreenModal, setShowScreenModal] = useState(false);
+  const [screenConsentDeclined, setScreenConsentDeclined] = useState(false);
 
   useEffect(() => {
     if (!candidate) navigate("/");
@@ -54,7 +58,31 @@ export const Instructions = () => {
     }
   };
 
+  // The "Launch Portal Session" button first makes sure screen-recording
+  // consent has been explicitly given. If it hasn't, the consent modal is
+  // shown and the actual exam start is deferred until the candidate responds.
   const handleStartExam = async () => {
+    if (!screenRecordingConsent) {
+      setScreenConsentDeclined(false);
+      setShowScreenModal(true);
+      return;
+    }
+    await proceedStartExam();
+  };
+
+  const handleAllowScreenRecording = async () => {
+    setScreenRecordingConsent(true);
+    setScreenConsentDeclined(false);
+    setShowScreenModal(false);
+    await proceedStartExam();
+  };
+
+  const handleDenyScreenRecording = () => {
+    setScreenRecordingConsent(false);
+    setScreenConsentDeclined(true);
+  };
+
+  const proceedStartExam = async () => {
     setIsStartingExam(true);
     setStartError("");
 
@@ -193,7 +221,14 @@ export const Instructions = () => {
                 <X className="w-4 h-4 text-red-500 mt-1 shrink-0" />
                 <span>
                   Tab switches, window blur, and context menu actions are
-                  monitored.
+                  monitored in real time.
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <X className="w-4 h-4 text-red-500 mt-1 shrink-0" />
+                <span>
+                  Your screen and webcam are recorded for the full duration of
+                  the exam.
                 </span>
               </li>
               <li className="flex items-start gap-3">
@@ -335,6 +370,21 @@ export const Instructions = () => {
                 : "Allow Camera"}
           </Button>
 
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setScreenConsentDeclined(false);
+              setShowScreenModal(true);
+            }}
+            disabled={screenRecordingConsent}
+            className="px-3 py-2 text-sm gap-1.5"
+          >
+            <ScreenShare className="w-3.5 h-3.5" />
+            {screenRecordingConsent
+              ? "Screen Recording Allowed"
+              : "Allow Screen Recording"}
+          </Button>
+
           {isMobile && (
             <p className="text-sm text-red-700">
               Quiz not supported on mobile devices.
@@ -356,6 +406,12 @@ export const Instructions = () => {
           {startError}
         </p>
       )}
+      <ScreenRecordingModal
+        open={showScreenModal}
+        declined={screenConsentDeclined}
+        onAllow={handleAllowScreenRecording}
+        onDeny={handleDenyScreenRecording}
+      />
     </PageContainer>
   );
 };
