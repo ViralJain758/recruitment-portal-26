@@ -162,14 +162,6 @@ const FAQS = [
   },
 ];
 
-const DEPT_BADGE_CLASS = {
-  Tech: "cd-badge--tech",
-  Design: "cd-badge--design",
-  Marketing: "cd-badge--marketing",
-  Content: "cd-badge--content",
-  Media: "cd-badge--media",
-};
-
 const DEPT_OPTIONS = ["Tech", "Design", "Marketing", "Content", "Media"];
 
 const ATTENDANCE_OPTIONS = [
@@ -408,11 +400,8 @@ function QRCard({ qrToken, slotInfo }) {
 
 function DeptBadge({ dept, secondary = false }) {
   if (!dept) return null;
-  const cls = DEPT_BADGE_CLASS[dept] ?? "cd-badge--tech";
   return (
-    <span
-      className={`cd-badge ${cls}${secondary ? " cd-badge--secondary" : ""}`}
-    >
+    <span className={`cd-badge${secondary ? " cd-badge--secondary" : ""}`}>
       {dept}
       {secondary && <span className="cd-badge-label">2nd</span>}
     </span>
