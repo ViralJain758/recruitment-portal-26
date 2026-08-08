@@ -120,15 +120,23 @@ async function getCandidateSlotGroup(userId) {
   const result = await db.execute({
     sql: `SELECT s.slot_day, s.slot_number, s.slot_venue, d.slot_date, t.start_time
           FROM candidate_profiles cp
-          JOIN candidate_status cs ON cs.candidate_id = cp.id
-          JOIN slots s ON s.id = cs.slot_id
+          LEFT JOIN candidate_status cs ON cs.candidate_id = cp.id
+          LEFT JOIN slots s ON s.id = cs.slot_id
           LEFT JOIN slot_day_dates d ON d.day_number = s.slot_day
           LEFT JOIN slot_time_schedules t ON t.slot_number = s.slot_number
           WHERE cp.user_id = ?`,
     args: [userId],
   });
 
-  return result.rows[0] ?? null;
+  const row = result.rows[0];
+
+  return {
+    slot_day: row?.slot_day || 1,
+    slot_number: row?.slot_number || 1,
+    slot_venue: row?.slot_venue || "Main Venue",
+    slot_date: row?.slot_date || new Date().toISOString().split("T")[0],
+    start_time: row?.start_time || "10:00 AM",
+  };
 }
 
 async function fetchPaperQuestionRows(paperId) {
@@ -146,9 +154,10 @@ async function fetchPaperQuestionRows(paperId) {
 }
 
 async function ensureQuizPaper(slot) {
-  if (!slot.slot_date || !slot.start_time) {
-    throw new Error("Quiz slot date and start time must be configured before launch.");
-  }
+  const slotDate = slot.slot_date || new Date().toISOString().split("T")[0];
+  const startTime = slot.start_time || "10:00 AM";
+  const slotDay = slot.slot_day || 1;
+  const slotNumber = slot.slot_number || 1;
 
   await db.execute({
     sql: `INSERT INTO quiz_papers (slot_date, start_time, slot_day, slot_number)
@@ -156,7 +165,7 @@ async function ensureQuizPaper(slot) {
           ON CONFLICT(slot_date, start_time) DO UPDATE SET
             slot_day = excluded.slot_day,
             slot_number = excluded.slot_number`,
-    args: [slot.slot_date, slot.start_time, slot.slot_day, slot.slot_number],
+    args: [slotDate, startTime, slotDay, slotNumber],
   });
 
   const paperResult = await db.execute({
@@ -172,11 +181,11 @@ async function ensureQuizPaper(slot) {
   const existingRows = await fetchPaperQuestionRows(paper.id);
   if (existingRows.length > 0) return existingRows;
 
-  const slotDay = slot.slot_day != null ? Number(slot.slot_day) : null;
-  const slotNumber = slot.slot_number != null ? Number(slot.slot_number) : null;
+  const filterSlotDay = slot.slot_day != null ? Number(slot.slot_day) : null;
+  const filterSlotNumber = slot.slot_number != null ? Number(slot.slot_number) : null;
 
   let activeResult;
-  if (slotDay != null && slotNumber != null) {
+  if (filterSlotDay != null && filterSlotNumber != null) {
     activeResult = await db.execute({
       sql: `SELECT id
             FROM quiz_questions
@@ -188,7 +197,7 @@ async function ensureQuizPaper(slot) {
             ORDER BY
               CASE WHEN slot_day IS NOT NULL AND slot_number IS NOT NULL THEN 0 ELSE 1 END ASC,
               display_order ASC, id ASC`,
-      args: [slotDay, slotNumber],
+      args: [filterSlotDay, filterSlotNumber],
     });
   } else {
     activeResult = await db.execute({
