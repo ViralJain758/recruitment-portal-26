@@ -40,7 +40,7 @@ export default function ScannerPage() {
     return (
       <AttendanceScanner
         adminBypass={isAdmin}
-        onClose={() => navigate("/admin-dashboard")}
+        onClose={isAdmin ? () => navigate("/admin-dashboard") : undefined}
       />
     );
   }

@@ -249,13 +249,15 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
       </div>
 
       <div className="scanner-modal">
-        <button
-          className="scanner-close"
-          onClick={handleClose}
-          aria-label="Close Scanner"
-        >
-          ×
-        </button>
+        {onClose && (
+          <button
+            className="scanner-close"
+            onClick={handleClose}
+            aria-label="Close Scanner"
+          >
+            ×
+          </button>
+        )}
 
         {/* QR reader is always in the DOM — never hidden or conditionally rendered */}
         <div className="scanner-main">

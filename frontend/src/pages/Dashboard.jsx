@@ -1555,6 +1555,30 @@ export default function Dashboard({
         </div>
       </div>
 
+      {/* ── Footer ── */}
+      <div className="cd-footer">
+        <button
+          type="button"
+          className="cd-footer-link"
+          onClick={() => navigate("/privacy-policy")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          Privacy Policy
+        </button>
+        <span className="cd-footer-dot" aria-hidden="true">
+          •
+        </span>
+        <span className="cd-footer-copy">MLSC Recruitment</span>
+      </div>
+
       {/* ── Edit modal ── */}
       {showEdit && (
         <EditModal
