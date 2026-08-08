@@ -65,21 +65,25 @@ export async function submitQuiz(req, res) {
           : `https://${reqHost}/api/quiz/process-webhook`;
       }
 
-      logger.info("Publishing quiz submission to QStash", { userId: user.id, targetUrl });
+      const isLoopback = /localhost|127\.0\.0\.1|::1/i.test(targetUrl);
 
-      const qstashRes = await qstashClient.publishJSON({
-        url: targetUrl,
-        body: { userId: user.id, responses },
-        deduplicationId: `quiz-submit-${user.id}`,
-        retries: 3,
-      });
+      if (!isLoopback) {
+        logger.info("Publishing quiz submission to QStash", { userId: user.id, targetUrl });
 
-      return res.status(202).json({
-        queued: true,
-        submitted: true,
-        messageId: qstashRes.messageId,
-        message: "Quiz submission queued successfully.",
-      });
+        const qstashRes = await qstashClient.publishJSON({
+          url: targetUrl,
+          body: { userId: user.id, responses },
+          deduplicationId: `quiz-submit-${user.id}`,
+          retries: 3,
+        });
+
+        return res.status(202).json({
+          queued: true,
+          submitted: true,
+          messageId: qstashRes.messageId,
+          message: "Quiz submission queued successfully.",
+        });
+      }
     }
 
     // 2. BullMQ Redis Queue (for standalone Node servers)

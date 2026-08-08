@@ -145,8 +145,8 @@ await batch(
     const profile = profileByEmail.get(user.email);
     return {
       sql: `INSERT INTO candidate_form
-            (candidate_id, phone_number, attendance, domain_experience, join_reason, primary_department, secondary_department, other_societies, recruit_reason)
-            VALUES (?, '9999999999', 'Yes', 'Load test', 'Load test', 'Technical', 'Management', 'None', 'Load test')`,
+            (candidate_id, attendance, join_reason, primary_department, secondary_department, other_societies, recruit_reason)
+            VALUES (?, 'Yes', 'Load test', 'Technical', 'Management', 'None', 'Load test')`,
       args: [profile.id],
     };
   }),

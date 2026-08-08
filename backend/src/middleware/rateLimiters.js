@@ -20,6 +20,7 @@ function makeLimiter(name, { windowMs, limit, message, ...options }) {
     limit,
     standardHeaders: true,
     legacyHeaders: false,
+    validate: false,
     keyGenerator: (req) => {
       const auth = req.headers.authorization;
       if (auth && auth.startsWith("Bearer ")) {
