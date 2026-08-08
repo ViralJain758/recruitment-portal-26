@@ -56,7 +56,7 @@ export const ScreenRecordingModal = ({ open, onAllow, onDeny, declined }) => {
             className="flex-1 py-2.5 text-sm gap-2"
           >
             <ShieldCheck className="w-4 h-4" />
-            Allow & Continue
+            Allow
           </Button>
         </div>
       </Card>

@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Otp from "./pages/Otp";
 import CandidateDetails from "./pages/CandidateDetails";
 import Dashboard from "./pages/Dashboard";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import AdminDashboard from "./pages/AdminDashboard";
 import ScannerPage from "./pages/ScannerPage";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -123,6 +124,7 @@ export default function App() {
         />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
         <Route
           path="/candidate-details"

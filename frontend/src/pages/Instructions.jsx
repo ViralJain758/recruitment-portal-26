@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Award, Check, ScreenShare, ShieldAlert, UserCheck, X } from "lucide-react";
+import {
+  Award,
+  Check,
+  ScreenShare,
+  ShieldAlert,
+  UserCheck,
+  X,
+} from "lucide-react";
 import { useExam } from "../context/ExamContext";
 import { PageContainer } from "../components/quiz/layout/PageContainer";
 import { Checkbox } from "../components/quiz/common/Checkbox";
@@ -9,7 +16,7 @@ import { Card } from "../components/quiz/common/Card";
 import { ThemeToggle } from "../components/quiz/common/ThemeToggle";
 import { ScreenRecordingModal } from "../components/quiz/instructions/ScreenRecordingModal";
 import { getQuizQuestions } from "../lib/api";
-import mlsaLogo from "../assets/MLSC-logo.png";
+import MLSCLogo from "../assets/MLSC-logo.png";
 
 export const Instructions = () => {
   const { candidate, setExamStarted, questions } = useExam();
@@ -60,7 +67,8 @@ export const Instructions = () => {
 
   // The "Launch Portal Session" button first makes sure screen-recording
   // consent has been explicitly given. If it hasn't, the consent modal is
-  // shown and the actual exam start is deferred until the candidate responds.
+  // shown and the candidate must grant consent, then click Launch again to
+  // actually start the exam — granting consent alone no longer starts it.
   const handleStartExam = async () => {
     if (!screenRecordingConsent) {
       setScreenConsentDeclined(false);
@@ -70,11 +78,10 @@ export const Instructions = () => {
     await proceedStartExam();
   };
 
-  const handleAllowScreenRecording = async () => {
+  const handleAllowScreenRecording = () => {
     setScreenRecordingConsent(true);
     setScreenConsentDeclined(false);
     setShowScreenModal(false);
-    await proceedStartExam();
   };
 
   const handleDenyScreenRecording = () => {
@@ -152,16 +159,16 @@ export const Instructions = () => {
 
   return (
     <PageContainer className="max-w-5xl px-4 sm:px-6 py-5 sm:py-7 antialiased text-[#111827] dark:text-slate-100 gap-5">
-      <div className="border-b border-[#CBD5E1] dark:border-slate-700 pb-5 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
+      <div className="border-b border-[#CBD5E1] dark:border-neutral-700 pb-5 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
         <div className="flex items-start gap-3 min-w-0">
           <img
-            src={mlsaLogo}
+            src={MLSCLogo}
             alt="Microsoft Learn Student Ambassador Logo"
             className="w-8 sm:w-9 h-auto object-contain shrink-0"
           />
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#0067B8] dark:text-blue-300 mb-1">
-              MLSA Recruitment Portal
+              MLSC Recruitment Portal
             </p>
             <h1 className="m-0 text-2xl sm:text-3xl font-bold text-[#0F172A] dark:text-slate-50 tracking-tight leading-tight">
               Exam Instructions
@@ -174,7 +181,7 @@ export const Instructions = () => {
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="flex flex-1 sm:flex-none divide-x divide-[#CBD5E1] dark:divide-slate-700 border border-[#CBD5E1] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-400">
+          <div className="flex flex-1 sm:flex-none divide-x divide-[#CBD5E1] dark:divide-neutral-700 border border-[#CBD5E1] dark:border-neutral-700 bg-[#F8FAFC] dark:bg-neutral-900 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-400">
             <div className="px-3 py-2">
               Questions{" "}
               <span className="ml-2 font-mono text-[#0F172A] dark:text-slate-50">
@@ -184,7 +191,7 @@ export const Instructions = () => {
             <div className="px-3 py-2">
               Time{" "}
               <span className="ml-2 font-mono text-[#0F172A] dark:text-slate-50">
-                30m
+                20m
               </span>
             </div>
           </div>
@@ -194,7 +201,7 @@ export const Instructions = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-4 sm:gap-5">
         <div className="space-y-4">
-          <Card className="border-[#E2E8F0] dark:border-slate-700 bg-white dark:bg-slate-900 p-0 rounded-lg shadow-sm overflow-hidden">
+          <Card className="border-[#E2E8F0] dark:border-neutral-700 bg-white dark:bg-neutral-900 p-0 rounded-lg shadow-sm overflow-hidden">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-1.5 self-stretch bg-red-500" />
               <div className="w-10 h-10 bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 flex items-center justify-center shrink-0">
@@ -249,7 +256,7 @@ export const Instructions = () => {
             </ul>
           </Card>
 
-          <Card className="border-[#E2E8F0] dark:border-slate-700 bg-white dark:bg-slate-900 p-0 rounded-lg shadow-sm overflow-hidden">
+          <Card className="border-[#E2E8F0] dark:border-neutral-700 bg-white dark:bg-neutral-900 p-0 rounded-lg shadow-sm overflow-hidden">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-1.5 self-stretch bg-emerald-500" />
               <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shrink-0">
@@ -297,9 +304,9 @@ export const Instructions = () => {
         </div>
 
         <div className="flex flex-col gap-6">
-          <Card className="border-[#CBD5E1] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900 p-4 sm:p-5 rounded-lg shadow-none h-fit space-y-4 lg:sticky lg:top-6">
-            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 pb-4">
-              <div className="w-9 h-9 bg-white dark:bg-slate-950 border border-[#DBEAFE] dark:border-blue-500/20 text-[#0067B8] dark:text-blue-300 flex items-center justify-center shrink-0">
+          <Card className="border-[#CBD5E1] dark:border-neutral-700 bg-[#F8FAFC] dark:bg-neutral-900 p-4 sm:p-5 rounded-lg shadow-none h-fit space-y-4 lg:sticky lg:top-6">
+            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-neutral-700 pb-4">
+              <div className="w-9 h-9 bg-white dark:bg-neutral-950 border border-[#E2E8F0] dark:border-neutral-700 text-[#475569] dark:text-slate-300 flex items-center justify-center shrink-0">
                 <UserCheck className="w-5 h-5" />
               </div>
               <div>
@@ -326,7 +333,7 @@ export const Instructions = () => {
                 <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">
                   Enrollment
                 </label>
-                <p className="text-base font-bold text-[#0067B8] dark:text-blue-300 font-mono mt-0.5 tracking-tight">
+                <p className="text-base font-bold text-[#334155] dark:text-slate-200 font-mono mt-0.5 tracking-tight">
                   {candidate.enrollmentNumber}
                 </p>
               </div>
@@ -342,11 +349,45 @@ export const Instructions = () => {
                 </div>
               )}
             </div>
+
+            <div className="space-y-2 border-t border-slate-100 dark:border-neutral-700 pt-4">
+              <label className="text-[10px] uppercase font-bold text-[#64748B] dark:text-slate-400 tracking-wider">
+                Permissions
+              </label>
+
+              <Button
+                variant="secondary"
+                onClick={requestCameraPermission}
+                disabled={requestingCamera || cameraAccess}
+                className="w-full justify-center px-3 py-2 text-xs !text-[#0067B8] !border-[#DBEAFE] hover:!border-[#b3d7ff] hover:!bg-[#F0F7FF] dark:!text-blue-300 dark:!border-blue-500/20 dark:hover:!border-blue-500/40 dark:hover:!bg-blue-500/10"
+              >
+                {requestingCamera
+                  ? "Requesting..."
+                  : cameraAccess
+                    ? "Camera Allowed"
+                    : "Allow Camera"}
+              </Button>
+
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setScreenConsentDeclined(false);
+                  setShowScreenModal(true);
+                }}
+                disabled={screenRecordingConsent}
+                className="w-full justify-center px-3 py-2 text-xs gap-1.5 !text-[#0067B8] !border-[#DBEAFE] hover:!border-[#b3d7ff] hover:!bg-[#F0F7FF] dark:!text-blue-300 dark:!border-blue-500/20 dark:hover:!border-blue-500/40 dark:hover:!bg-blue-500/10"
+              >
+                <ScreenShare className="w-3.5 h-3.5" />
+                {screenRecordingConsent
+                  ? "Screen Recording Allowed"
+                  : "Allow Screen Recording"}
+              </Button>
+            </div>
           </Card>
         </div>
       </div>
 
-      <Card className="border-[#CBD5E1] dark:border-slate-700 bg-white dark:bg-slate-900 p-4 rounded-lg shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+      <Card className="border-[#CBD5E1] dark:border-neutral-700 bg-white dark:bg-neutral-900 p-4 rounded-lg shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <Checkbox
           id="agree"
           label={
@@ -360,38 +401,6 @@ export const Instructions = () => {
         />
 
         <div className="flex items-center gap-3">
-          <div className="hidden sm:block text-xs text-[#475569] dark:text-slate-300">
-            Camera permission is required to validate your session.
-          </div>
-
-          <Button
-            variant="secondary"
-            onClick={requestCameraPermission}
-            disabled={requestingCamera || cameraAccess}
-            className="px-3 py-2 text-sm"
-          >
-            {requestingCamera
-              ? "Requesting..."
-              : cameraAccess
-                ? "Camera Allowed"
-                : "Allow Camera"}
-          </Button>
-
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setScreenConsentDeclined(false);
-              setShowScreenModal(true);
-            }}
-            disabled={screenRecordingConsent}
-            className="px-3 py-2 text-sm gap-1.5"
-          >
-            <ScreenShare className="w-3.5 h-3.5" />
-            {screenRecordingConsent
-              ? "Screen Recording Allowed"
-              : "Allow Screen Recording"}
-          </Button>
-
           {isMobile && (
             <p className="text-sm text-red-700">
               Quiz not supported on mobile devices.
@@ -402,7 +411,7 @@ export const Instructions = () => {
             variant="primary"
             disabled={!agreed || isStartingExam || isMobile || !cameraAccess}
             onClick={handleStartExam}
-            className="w-full sm:w-auto px-7 py-3 text-sm font-bold tracking-wide text-white bg-[#0067B8] hover:bg-[#005A9E] rounded-lg border border-blue-500/10 shadow-lg shadow-blue-900/10 transition-all shrink-0"
+            className="w-full sm:w-auto px-7 py-3 text-sm font-bold tracking-wide !text-white !bg-emerald-600 hover:!bg-emerald-700 rounded-lg border border-emerald-500/10 shadow-lg shadow-emerald-900/10 transition-all shrink-0"
           >
             {isStartingExam ? "Preparing Quiz..." : "Launch Portal Session"}
           </Button>
