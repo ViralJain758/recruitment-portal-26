@@ -14,6 +14,7 @@
   "type": "module",
   "dependencies": {
     "@libsql/client": "^0.14.0",
+    "@upstash/qstash": "^2.11.3",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.81.3",
     "cookie-parser": "^1.4.7",
