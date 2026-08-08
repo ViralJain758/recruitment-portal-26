@@ -59,6 +59,20 @@ export function verifyScannerSession(token) {
   }
 }
 
+export function verifyAccessTokenPayload(token) {
+  try {
+    const payload = jwt.verify(token, requiredSecret("JWT_SECRET"));
+    if (!payload?.id || !payload?.email) return null;
+    return {
+      id: payload.id,
+      email: payload.email,
+      role: payload.role || "user",
+    };
+  } catch {
+    return null;
+  }
+}
+
 function requiredSecret(name) {
   const value = process.env[name]?.trim();
   if (!value) {

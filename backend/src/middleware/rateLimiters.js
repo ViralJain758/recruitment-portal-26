@@ -1,6 +1,12 @@
 import rateLimit from "express-rate-limit";
 import { logRateLimitExceeded } from "./securityEvents.js";
 
+export function isLoadTestBypassRequest(req) {
+  const bypassToken = process.env.LOAD_TEST_BYPASS_TOKEN?.trim();
+  if (!bypassToken) return false;
+  return req.get("x-load-test-token") === bypassToken;
+}
+
 // ── Shared limiter factory ───────────────────────────────────────────────
 // Every limiter in this file is built through this one function so they
 // all: log to the same "suspicious_activity" pipeline when tripped, send
@@ -15,6 +21,7 @@ function makeLimiter(name, { windowMs, limit, message, ...options }) {
     standardHeaders: true,
     legacyHeaders: false,
     message: message ? { message } : undefined,
+    skip: isLoadTestBypassRequest,
     ...options,
     handler: (req, res, _next, options) => {
       logRateLimitExceeded(req, name);

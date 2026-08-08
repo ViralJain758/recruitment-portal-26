@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import Otp from "./pages/Otp";
@@ -81,6 +81,31 @@ function ExamAuthRoute({ authSession, candidateProfile, children }) {
   return children;
 }
 
+// Once a candidate has an exam in progress (started, not yet completed), they
+// must not be able to reach any other route — not by hitting the browser's
+// back/forward arrows, not by typing a URL like /dashboard directly, not by
+// clicking a stale link. All of those are just different ways of changing
+// `location.pathname`, and React Router re-renders on every one of them, so
+// checking the exam state here — above the whole <Routes> tree — is the one
+// place that reliably catches every case. (A `popstate` listener down inside
+// the Quiz page cannot do this: by the time it runs, React Router has often
+// already committed the new route.)
+//
+// Landing back on /quiz mid-exam is safe and expected: Quiz.jsx itself
+// detects the lost fullscreen/session state and shows its "Restore
+// Fullscreen" interceptor, counting it as a security warning rather than
+// silently letting the candidate walk away and start over.
+function ExamInProgressGuard({ children }) {
+  const { examStarted, examCompleted } = useExam();
+  const location = useLocation();
+
+  if (examStarted && !examCompleted && location.pathname !== "/quiz") {
+    return <Navigate to="/quiz" replace />;
+  }
+
+  return children;
+}
+
 export default function App() {
   const [isAdmin, setIsAdmin] = useState(
     () => localStorage.getItem("isAdmin") === "true",
@@ -101,6 +126,7 @@ export default function App() {
 
   return (
     <ExamProvider>
+      <ExamInProgressGuard>
       <Routes>
         <Route
           path="/"
@@ -203,6 +229,7 @@ export default function App() {
           }
         />
       </Routes>
+      </ExamInProgressGuard>
     </ExamProvider>
   );
 }

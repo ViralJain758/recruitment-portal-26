@@ -1,4 +1,5 @@
 import logger from "../config/logger.js";
+import { isLoadTestBypassRequest } from "./rateLimiters.js";
 
 const securityLogger = logger.child({ category: "security" });
 
@@ -31,6 +32,8 @@ const BOT_UA_PATTERNS = [
 // checks, uptime monitors, and admin-side internal tooling legitimately use
 // plain HTTP clients, and blocking them there would just break monitoring.
 export function blockKnownBots(req, res, next) {
+  if (isLoadTestBypassRequest(req)) return next();
+
   const ua = req.headers["user-agent"];
 
   if (!ua || !ua.trim()) {
@@ -78,6 +81,8 @@ const hits = new Map();
 
 export function slowDown(bucket) {
   return (req, res, next) => {
+    if (isLoadTestBypassRequest(req)) return next();
+
     const key = `${bucket}:${req.ip}`;
     const now = Date.now();
     const existing = hits.get(key);

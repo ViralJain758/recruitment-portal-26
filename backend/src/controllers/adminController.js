@@ -45,6 +45,19 @@ import logger from "../config/logger.js";
 const SCANNER_COOKIE_NAME = "scannerSession";
 const SCANNER_COOKIE_MAX_AGE = 2 * 60 * 60 * 1000;
 
+// Emits a candidate-record event to the admin room (as before) AND directly
+// to that candidate's own room, so their dashboard picks up the change live
+// instead of only refreshing on next page load. `data` is expected to be a
+// full joined candidate row (has `user_id`) as returned by candidateModel.
+function emitCandidateUpdate(req, event, data) {
+  const io = req.app.get("io");
+  if (!io) return;
+  io.to("admin").emit(event, data);
+  if (data?.user_id) {
+    io.to(`candidate:${data.user_id}`).emit(event, data);
+  }
+}
+
 function scannerCookieOptions() {
   return {
     httpOnly: true,
@@ -144,7 +157,7 @@ export async function updateCandidateStatus(req, res) {
     const { status } = req.body;
 
     const data = await updateStatus(id, status);
-    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    emitCandidateUpdate(req, "candidate:updated", data);
 
     return res.json({ message: "Status updated", data });
   } catch (error) {
@@ -168,7 +181,7 @@ export async function updateCandidateAttendance(req, res) {
     }
 
     const data = await updateAttendance(id, present);
-    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    emitCandidateUpdate(req, "candidate:updated", data);
 
     return res.json({ message: "Attendance updated", data });
   } catch (error) {
@@ -188,7 +201,7 @@ export async function assignCandidateSlotHandler(req, res) {
     const { slot_id } = req.body;
 
     const data = await assignCandidateSlot(id, slot_id ?? null);
-    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    emitCandidateUpdate(req, "candidate:updated", data);
     req.app.get("io")?.to("admin").emit("slots:summary_updated", {
       candidateId: id,
       slotId: slot_id ?? null,
@@ -210,7 +223,7 @@ export async function resetCandidateQuizHandler(req, res) {
   try {
     const { id } = req.params;
     const data = await resetCandidateQuiz(id);
-    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    emitCandidateUpdate(req, "candidate:updated", data);
 
     return res.json({ message: "Candidate quiz reset", data });
   } catch (error) {
@@ -275,7 +288,7 @@ export async function markCandidateAttendance(req, res) {
     // admin room. The HTTP response — reachable with just the shared scanner
     // password, not a full admin session — gets the minimal fields the
     // scanner UI actually renders.
-    req.app.get("io")?.to("admin").emit("candidate:updated", result.candidate);
+    emitCandidateUpdate(req, "candidate:updated", result.candidate);
 
     const minimalCandidate = result.candidate
       ? {
@@ -327,7 +340,7 @@ export async function lockCandidateForm(req, res) {
     }
 
     const data = await toggleFormLock(id, locked);
-    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    emitCandidateUpdate(req, "candidate:updated", data);
 
     return res.json({
       message: locked ? "Form locked" : "Form unlocked",
@@ -356,7 +369,7 @@ export async function individualUnlockCandidate(req, res) {
     }
 
     const data = await setIndividualUnlock(id, unlocked);
-    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    emitCandidateUpdate(req, "candidate:updated", data);
 
     return res.json({
       message: unlocked
@@ -474,7 +487,7 @@ export async function updateOwnDetails(req, res) {
       return res.status(401).json({ message: "Invalid or expired session." });
 
     const data = await updateCandidateDetails(user.id, req.body);
-    req.app.get("io")?.to("admin").emit("candidate:updated", data);
+    emitCandidateUpdate(req, "candidate:updated", data);
 
     return res.json({
       message: "Details updated successfully.",
@@ -495,7 +508,11 @@ export async function updateOwnDetails(req, res) {
 export async function distributeSlotHandler(req, res) {
   try {
     const result = await distributeSlots();
-    req.app.get("io")?.to("admin").emit("slots:distributed", result);
+    const io = req.app.get("io");
+    io?.to("admin").emit("slots:distributed", result);
+    // Bulk operation — we don't have a per-candidate diff to target, so ask
+    // every connected candidate socket to re-check its own slot assignment.
+    io?.to("candidates").emit("candidate:self_refresh");
     return res.json({ message: "Slots distributed successfully.", ...result });
   } catch (error) {
     (req.log || logger).error("API error", {
@@ -526,7 +543,9 @@ export async function getSlotSummaryHandler(req, res) {
 export async function clearSlotsHandler(req, res) {
   try {
     await clearSlots();
-    req.app.get("io")?.to("admin").emit("slots:cleared");
+    const io = req.app.get("io");
+    io?.to("admin").emit("slots:cleared");
+    io?.to("candidates").emit("candidate:self_refresh");
     return res.json({ message: "All slots cleared." });
   } catch (error) {
     (req.log || logger).error("API error", {
@@ -560,7 +579,16 @@ export async function setSlotActiveHandler(req, res) {
       return res.status(404).json({ message: "Slot not found." });
     }
 
-    req.app.get("io")?.to("admin").emit("slots:summary_updated", { slot });
+    const io = req.app.get("io");
+    io?.to("admin").emit("slots:summary_updated", { slot });
+    // Live-notify every candidate sitting in this slot's room so their
+    // "Enter Test" button unlocks (or re-locks) immediately, without them
+    // needing to refresh the page.
+    io?.to(`slot:${slot.id}`).emit(
+      active ? "slot:activated" : "slot:deactivated",
+      { slot },
+    );
+
     return res.json({
       message: active ? "Slot activated." : "Slot deactivated.",
       slot,

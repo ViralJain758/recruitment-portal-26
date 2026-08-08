@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import logger from "../config/logger.js";
+import { isLoadTestBypassRequest } from "./rateLimiters.js";
 
 // Paths that are polled constantly by uptime monitors / load balancers.
 // Logging every single one at "info" would drown out everything else, so
@@ -7,6 +8,8 @@ import logger from "../config/logger.js";
 const LOW_SIGNAL_PATHS = new Set(["/health"]);
 
 export function requestLogger(req, res, next) {
+  if (isLoadTestBypassRequest(req)) return next();
+
   const requestId = req.headers["x-request-id"]?.toString() || crypto.randomUUID();
   req.requestId = requestId;
   req.log = logger.child({ requestId });
