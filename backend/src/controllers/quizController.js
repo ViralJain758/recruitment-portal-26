@@ -52,36 +52,42 @@ export async function submitQuiz(req, res) {
 
     // 1. Upstash QStash Serverless Queueing (Recommended for Vercel / Edge)
     if (qstashClient) {
-      const canonicalHost = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
-      let targetUrl = "";
-      if (canonicalHost) {
-        targetUrl = canonicalHost.startsWith("http")
-          ? `${canonicalHost}/api/quiz/process-webhook`
-          : `https://${canonicalHost}/api/quiz/process-webhook`;
-      } else {
-        const reqHost = (process.env.VERCEL_URL || req.get("host") || "").replace(/\/$/, "");
-        targetUrl = reqHost.startsWith("http")
-          ? `${reqHost}/api/quiz/process-webhook`
-          : `https://${reqHost}/api/quiz/process-webhook`;
-      }
+      try {
+        const canonicalHost = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+        let targetUrl = "";
+        if (canonicalHost) {
+          targetUrl = canonicalHost.startsWith("http")
+            ? `${canonicalHost}/api/quiz/process-webhook`
+            : `https://${canonicalHost}/api/quiz/process-webhook`;
+        } else {
+          const reqHost = (process.env.VERCEL_URL || req.get("host") || "").replace(/\/$/, "");
+          targetUrl = reqHost.startsWith("http")
+            ? `${reqHost}/api/quiz/process-webhook`
+            : `https://${reqHost}/api/quiz/process-webhook`;
+        }
 
-      const isLoopback = /localhost|127\.0\.0\.1|::1/i.test(targetUrl);
+        const isLoopback = /localhost|127\.0\.0\.1|::1/i.test(targetUrl);
 
-      if (!isLoopback) {
-        logger.info("Publishing quiz submission to QStash", { userId: user.id, targetUrl });
+        if (!isLoopback) {
+          logger.info("Publishing quiz submission to QStash", { userId: user.id, targetUrl });
 
-        const qstashRes = await qstashClient.publishJSON({
-          url: targetUrl,
-          body: { userId: user.id, responses },
-          deduplicationId: `quiz-submit-${user.id}`,
-          retries: 3,
-        });
+          const qstashRes = await qstashClient.publishJSON({
+            url: targetUrl,
+            body: { userId: user.id, responses },
+            deduplicationId: `quiz-submit-${user.id}`,
+            retries: 3,
+          });
 
-        return res.status(202).json({
-          queued: true,
-          submitted: true,
-          messageId: qstashRes.messageId,
-          message: "Quiz submission queued successfully.",
+          return res.status(202).json({
+            queued: true,
+            submitted: true,
+            messageId: qstashRes.messageId,
+            message: "Quiz submission queued successfully.",
+          });
+        }
+      } catch (err) {
+        logger.warn("QStash publishing failed, falling back to direct DB submission", {
+          error: err.message,
         });
       }
     }
