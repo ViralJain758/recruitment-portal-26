@@ -60,24 +60,19 @@ const allowedOrigins = [
 
 function isAllowedOrigin(origin) {
   if (!origin) return true;
-  // Allow any localhost origin during development (different dev ports)
+  // Allow any localhost origin during development or any Vercel deployment
   if (
     origin.startsWith("http://localhost") ||
-    origin.startsWith("http://127.0.0.1")
-  )
+    origin.startsWith("http://127.0.0.1") ||
+    origin.endsWith(".vercel.app")
+  ) {
     return true;
+  }
   return allowedOrigins.includes(origin);
 }
 
 const io = new Server(httpServer, {
   cors: {
-    // FIX: this used to be a static `allowedOrigins` array, which silently
-    // rejected the handshake from any dev port other than 5173/5174 (Vite
-    // auto-increments the port if one is busy) even though the *same*
-    // origin sailed straight through the regular Express `cors()` below.
-    // That mismatch is why sockets could appear "completely broken" in dev
-    // while the REST API kept working fine. Reuse the same origin check the
-    // HTTP layer uses so both stay in sync.
     origin(origin, callback) {
       callback(null, isAllowedOrigin(origin));
     },
@@ -212,7 +207,7 @@ app.use(
       }
 
       logger.warn("Rejected cross-origin request", { origin });
-      callback(new Error(`Origin not allowed: ${origin}`));
+      callback(null, false);
     },
     credentials: true,
   }),
