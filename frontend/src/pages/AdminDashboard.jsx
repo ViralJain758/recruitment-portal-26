@@ -9,6 +9,7 @@ import CandidateListRow from "../components/CandidateListRow";
 import CandidateDrawer from "../components/CandidateDrawer";
 import StatsGrid from "../components/StatsGrid";
 import SlotDistribution from "../components/SlotDistribution";
+import { QuizQuestionsManager } from "../components/QuizQuestionsManager";
 import { formatSlotSummary } from "../utils/slotResolver";
 
 import { useCandidates } from "../hooks/useCandidates";
@@ -30,6 +31,7 @@ function toDatetimeLocalValue(dateLike) {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("candidates");
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [deadlineDraft, setDeadlineDraft] = useState("");
   const [deadlineDirty, setDeadlineDirty] = useState(false);
@@ -160,6 +162,26 @@ export default function AdminDashboard() {
           <div>
             <h1>MLSC Recruitment</h1>
             <p className="header-subtitle">Manage &amp; review applications</p>
+          </div>
+
+          <div style={{ display: "flex", gap: "0.5rem", marginLeft: "1.5rem" }}>
+            <button
+              type="button"
+              className={`btn ${activeTab === "candidates" ? "btn--primary" : "btn--secondary"}`}
+              onClick={() => setActiveTab("candidates")}
+              style={{ fontWeight: "600" }}
+            >
+              Candidates &amp; Slots
+            </button>
+
+            <button
+              type="button"
+              className={`btn ${activeTab === "questions" ? "btn--primary" : "btn--secondary"}`}
+              onClick={() => setActiveTab("questions")}
+              style={{ fontWeight: "600" }}
+            >
+              Quiz Questions
+            </button>
           </div>
         </div>
 
@@ -321,12 +343,19 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      {/* ── Stats ── */}
-      <StatsGrid
-        stats={stats}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-      />
+      {activeTab === "questions" ? (
+        <QuizQuestionsManager
+          days={slotSchedules?.days || [1, 2, 3]}
+          slots={slotSchedules?.slots || [1, 2, 3]}
+        />
+      ) : (
+        <>
+          {/* ── Stats ── */}
+          <StatsGrid
+            stats={stats}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+          />
 
       {/* ── Global lock banner ── */}
       {globalLocked && (
@@ -615,6 +644,8 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+      )}
+        </>
       )}
 
       <CandidateDrawer

@@ -107,14 +107,38 @@ export function submitQuiz(payload, token) {
   });
 }
 
-export function getQuizQuestionBank() {
-  return request("/api/admin/quiz/questions");
+export function getQuizQuestionBank(params = {}) {
+  const query = new URLSearchParams();
+  if (params.slot_day != null && params.slot_day !== "") query.set("slot_day", params.slot_day);
+  if (params.slot_number != null && params.slot_number !== "") query.set("slot_number", params.slot_number);
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request(`/api/admin/quiz/questions${queryString}`);
 }
 
 export function saveQuizQuestionBank(questions) {
   return request("/api/admin/quiz/questions", {
     method: "PUT",
     body: JSON.stringify({ questions }),
+  });
+}
+
+export function addQuizQuestion(questionData) {
+  return request("/api/admin/quiz/question", {
+    method: "POST",
+    body: JSON.stringify(questionData),
+  });
+}
+
+export function updateQuizQuestion(id, questionData) {
+  return request(`/api/admin/quiz/question/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(questionData),
+  });
+}
+
+export function deleteQuizQuestion(id) {
+  return request(`/api/admin/quiz/question/${id}`, {
+    method: "DELETE",
   });
 }
 

@@ -24,10 +24,11 @@ import {
   setSlotTimeHandler,
   addDayHandler,
   removeDayHandler,
-  addSlotHandler,
-  removeSlotHandler,
   getQuizQuestionBankHandler,
   upsertQuizQuestionBankHandler,
+  createQuizQuestionHandler,
+  updateQuizQuestionHandler,
+  deleteQuizQuestionHandler,
   requireAdminSession,
   requireScannerPassword,
   verifyScannerPassword,
@@ -122,10 +123,11 @@ router.post("/slots/schedules/slot", requireAdminSession, adminWriteLimiter, add
 router.patch("/slots/schedules/slot/:slot", requireAdminSession, adminWriteLimiter, setSlotTimeHandler);
 router.delete("/slots/schedules/slot/:slot", requireAdminSession, adminWriteLimiter, removeSlotHandler);
 
-// Quiz question bank — GET returns the full bank in one shot, exactly the
-// kind of endpoint scripted scraping targets, hence adminReadLimiter here
-// too even though it's already session-gated.
+// Quiz question bank
 router.get("/quiz/questions", requireAdminSession, adminReadLimiter, getQuizQuestionBankHandler);
+router.post("/quiz/question", requireAdminSession, adminWriteLimiter, createQuizQuestionHandler);
+router.put("/quiz/question/:id", requireAdminSession, adminWriteLimiter, updateQuizQuestionHandler);
+router.delete("/quiz/question/:id", requireAdminSession, adminWriteLimiter, deleteQuizQuestionHandler);
 router.put("/quiz/questions", requireAdminSession, adminWriteLimiter, upsertQuizQuestionBankHandler);
 router.post("/quiz/questions", requireAdminSession, adminWriteLimiter, upsertQuizQuestionBankHandler);
 
