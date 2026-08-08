@@ -9,7 +9,8 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
-import { verifyAdminSession } from "./src/models/authModel.js";
+import { verifyAdminSession, getUserByToken } from "./src/models/authModel.js";
+import { findCandidateByUserId } from "./src/models/candidateModel.js";
 import db from "./src/config/db.js";
 import authRoutes from "./src/routes/authRoute.js";
 import adminRoutes from "./src/routes/adminRoute.js";
@@ -67,7 +68,16 @@ function isAllowedOrigin(origin) {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: allowedOrigins,
+    // FIX: this used to be a static `allowedOrigins` array, which silently
+    // rejected the handshake from any dev port other than 5173/5174 (Vite
+    // auto-increments the port if one is busy) even though the *same*
+    // origin sailed straight through the regular Express `cors()` below.
+    // That mismatch is why sockets could appear "completely broken" in dev
+    // while the REST API kept working fine. Reuse the same origin check the
+    // HTTP layer uses so both stay in sync.
+    origin(origin, callback) {
+      callback(null, isAllowedOrigin(origin));
+    },
     credentials: true,
   },
 });
@@ -75,12 +85,15 @@ const io = new Server(httpServer, {
 app.set("io", io);
 
 // ── Socket auth ──────────────────────────────────────────────────────────
-// Live candidate/slot updates contain PII (name, DOB, email, quiz score) and
-// are admin-only data. Without this, anyone who opens a raw socket.io
-// connection to the server — bypassing the REST API entirely — could listen
-// in on every candidate's data. Only sockets presenting a valid, unexpired
-// adminSession cookie are allowed into the "admin" room; everyone else is
-// rejected at the handshake.
+// Two kinds of sockets connect here:
+//   - Admin dashboards, authenticated via the httpOnly `adminSession`
+//     cookie, get the full live feed of every candidate change.
+//   - Candidate browser tabs, authenticated via their JWT access token
+//     (sent as `auth.token` on the client, since candidates don't have an
+//     httpOnly session cookie), only ever get updates about *themselves*
+//     and the slot they're assigned to.
+// Anyone who doesn't present valid credentials for one of these is
+// rejected at the handshake — no anonymous listeners.
 function parseCookieHeader(header) {
   const out = {};
   if (!header) return out;
@@ -94,25 +107,87 @@ function parseCookieHeader(header) {
   return out;
 }
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const cookies = parseCookieHeader(socket.request.headers.cookie);
   const admin = cookies.adminSession
     ? verifyAdminSession(cookies.adminSession)
     : null;
 
-  if (!admin) {
-    return next(new Error("Unauthorized"));
+  if (admin) {
+    socket.data.role = "admin";
+    socket.data.admin = admin;
+    return next();
   }
 
-  socket.data.admin = admin;
-  next();
+  const token = socket.handshake.auth?.token;
+  if (token) {
+    const { data } = await getUserByToken(token);
+    if (data?.user) {
+      socket.data.role = "candidate";
+      socket.data.userId = data.user.id;
+      return next();
+    }
+  }
+
+  return next(new Error("Unauthorized"));
 });
 
+// Looks up the candidate's current slot and makes sure their socket is (and
+// only is) in that slot's room — leaving whatever slot room it was in
+// before. Called on connect and whenever the client asks for a resync
+// (e.g. after their slot assignment might have changed).
+async function syncCandidateSlotRoom(socket) {
+  const { data } = await findCandidateByUserId(socket.data.userId);
+  for (const room of socket.rooms) {
+    if (room.startsWith("slot:")) socket.leave(room);
+  }
+  if (data?.slot_id) {
+    socket.join(`slot:${data.slot_id}`);
+  }
+}
+
 io.on("connection", (socket) => {
-  socket.join("admin");
-  logger.info("Admin socket connected", { socketId: socket.id });
+  if (socket.data.role === "admin") {
+    socket.join("admin");
+    logger.info("Admin socket connected", { socketId: socket.id });
+    socket.on("disconnect", (reason) => {
+      logger.info("Admin socket disconnected", {
+        socketId: socket.id,
+        reason,
+      });
+    });
+    return;
+  }
+
+  // Candidate socket
+  socket.join(`candidate:${socket.data.userId}`);
+  socket.join("candidates");
+  syncCandidateSlotRoom(socket).catch((error) => {
+    logger.error("Failed to sync candidate slot room", {
+      error: error.message,
+      userId: socket.data.userId,
+    });
+  });
+
+  socket.on("slot:refresh", () => {
+    syncCandidateSlotRoom(socket).catch((error) => {
+      logger.error("Failed to refresh candidate slot room", {
+        error: error.message,
+        userId: socket.data.userId,
+      });
+    });
+  });
+
+  logger.info("Candidate socket connected", {
+    socketId: socket.id,
+    userId: socket.data.userId,
+  });
   socket.on("disconnect", (reason) => {
-    logger.info("Admin socket disconnected", { socketId: socket.id, reason });
+    logger.info("Candidate socket disconnected", {
+      socketId: socket.id,
+      userId: socket.data.userId,
+      reason,
+    });
   });
 });
 

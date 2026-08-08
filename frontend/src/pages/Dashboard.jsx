@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useExam } from "../context/ExamContext";
 import { ThemeToggle } from "../components/quiz/common/ThemeToggle";
-import { updateCandidateDetails, getRegistrationDeadline } from "../lib/api";
+import {
+  updateCandidateDetails,
+  getRegistrationDeadline,
+  getCurrentUser,
+} from "../lib/api";
+import { useCandidateSocket } from "../hooks/useCandidateSocket";
 import mlscLogo from "../assets/MLSC-logo.png";
 import "./CandidateDashboard.css";
 
@@ -720,6 +725,41 @@ export default function Dashboard({
     DEFAULT_REGISTRATION_DEADLINE,
   );
   const { toasts, push, dismiss } = useToasts();
+
+  // ── Live updates ──────────────────────────────────────────────────────
+  // Keeps this dashboard in sync without a manual refresh: the candidate's
+  // own record (status/attendance/lock/slot assignment) updates in place,
+  // and a slot activation from the admin flips the "Enter Test" button on
+  // immediately with a toast, instead of the candidate having to reload.
+  useCandidateSocket({
+    accessToken: authSession?.accessToken,
+    onCandidateUpdated: (data) => {
+      // The server only ever emits this to the candidate's own room, so
+      // anything received here is guaranteed to be about this candidate —
+      // no need to check ids client-side (and doing so risks comparing
+      // against a stale `profile` closure anyway).
+      if (!data) return;
+      setProfile((current) => ({ ...current, ...data }));
+    },
+    onSlotActivated: () => {
+      setProfile((current) => ({ ...current, slot_is_active: 1 }));
+      push("Your slot is now active — you can start the quiz!", "success");
+    },
+    onSlotDeactivated: () => {
+      setProfile((current) => ({ ...current, slot_is_active: 0 }));
+    },
+    onSelfRefresh: async () => {
+      if (!authSession?.accessToken) return;
+      try {
+        const restored = await getCurrentUser(authSession.accessToken);
+        if (restored?.profile) {
+          setProfile((current) => ({ ...current, ...restored.profile }));
+        }
+      } catch (error) {
+        console.error("Failed to refresh candidate profile:", error);
+      }
+    },
+  });
 
   const slotInfo = profile.slot_id
     ? {
