@@ -7,6 +7,8 @@ const socketUrl = (
 export const adminSocket = io(socketUrl, {
   autoConnect: false,
   withCredentials: true,
+  reconnectionAttempts: 3,
+  timeout: 5000,
 });
 
 // Candidates don't have an httpOnly session cookie the socket handshake can
@@ -16,4 +18,6 @@ export const adminSocket = io(socketUrl, {
 // involved.
 export const candidateSocket = io(socketUrl, {
   autoConnect: false,
+  reconnectionAttempts: 3,
+  timeout: 5000,
 });
