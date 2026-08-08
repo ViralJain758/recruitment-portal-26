@@ -6,11 +6,6 @@ export const QUIZ_SUBMIT_QUEUE_NAME = "quiz-submit";
 // How long the HTTP request will wait for its job to finish before giving
 // up on it (the job itself keeps running/retrying in the background either
 // way — this only controls how long the candidate's browser tab waits).
-export const QUIZ_SUBMIT_WAIT_TIMEOUT_MS = Number.parseInt(
-  process.env.QUIZ_SUBMIT_WAIT_TIMEOUT_MS || "45000",
-  10,
-);
-
 // All quiz submissions funnel through this queue instead of hitting the
 // database directly from the request handler. That gives us two things a
 // plain `await submitQuizForUser(...)` can't:
