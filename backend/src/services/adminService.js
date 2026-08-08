@@ -238,6 +238,28 @@ export async function setGlobalLock(locked) {
   return locked;
 }
 
+// ── Registration & edit deadline ────────────────────────────────────────────
+// Stored as an ISO 8601 datetime string in app_settings. Falls back to a
+// sensible default if the admin has never set one yet.
+const DEFAULT_REGISTRATION_DEADLINE = "2026-08-31T23:59:59";
+
+export async function getRegistrationDeadline() {
+  const result = await db.execute({
+    sql: "SELECT value FROM app_settings WHERE key = 'registration_deadline'",
+    args: [],
+  });
+  return result.rows[0]?.value || DEFAULT_REGISTRATION_DEADLINE;
+}
+
+export async function setRegistrationDeadline(deadline) {
+  await db.execute({
+    sql: `INSERT INTO app_settings (key, value) VALUES ('registration_deadline', ?)
+          ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+    args: [deadline],
+  });
+  return deadline;
+}
+
 // ── Candidate self-edit ────────────────────────────────────────────────────
 
 const PROFILE_FIELDS = ["full_name", "date_of_birth"];

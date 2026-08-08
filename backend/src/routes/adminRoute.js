@@ -13,6 +13,8 @@ import {
   updateOwnDetails,
   getGlobalLockStatus,
   setGlobalLockStatus,
+  getRegistrationDeadlineStatus,
+  setRegistrationDeadlineStatus,
   distributeSlotHandler,
   getSlotSummaryHandler,
   clearSlotsHandler,
@@ -94,6 +96,16 @@ router.patch(
 // poll it), so it needs its own floor independent of admin auth.
 router.get("/global-lock", publicStatusLimiter, getGlobalLockStatus);
 router.patch("/global-lock", requireAdminSession, adminWriteLimiter, setGlobalLockStatus);
+
+// Registration & edit deadline — read side is unauthenticated (candidate
+// dashboards fetch it on load), same reasoning as global-lock above.
+router.get("/registration-deadline", publicStatusLimiter, getRegistrationDeadlineStatus);
+router.patch(
+  "/registration-deadline",
+  requireAdminSession,
+  adminWriteLimiter,
+  setRegistrationDeadlineStatus,
+);
 
 // Slot distribution
 router.post("/slots/distribute", requireAdminSession, adminWriteLimiter, distributeSlotHandler);

@@ -37,7 +37,8 @@ body.admin-light-mode {
   --admin-r-lg: 18px;
   --admin-r-xl: 24px;
 
-  --admin-shadow-sm: 0 1px 2px rgba(16, 31, 51, 0.05), 0 1px 3px rgba(16, 31, 51, 0.06);
+  --admin-shadow-sm:
+    0 1px 2px rgba(16, 31, 51, 0.05), 0 1px 3px rgba(16, 31, 51, 0.06);
   --admin-shadow-md: 0 6px 20px rgba(16, 31, 51, 0.07);
   --admin-shadow-lg: 0 16px 36px rgba(16, 31, 51, 0.12);
   --admin-shadow-xl: 0 28px 64px rgba(16, 31, 51, 0.22);
@@ -181,6 +182,37 @@ body.drawer-open {
   gap: 8px;
 }
 
+.deadline-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+}
+
+.deadline-editor label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-ink-soft);
+  white-space: nowrap;
+}
+
+.deadline-editor input[type="datetime-local"] {
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--admin-ink);
+  background: var(--admin-surface-alt);
+}
+
+.deadline-editor .btn {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
 /* =====================
    BUTTONS
    ===================== */
@@ -254,9 +286,9 @@ body.drawer-open {
 /* Legacy button override so existing code still works */
 .dashboard > button,
 .dashboard
-  button:not(.btn):not(.drawer-close-btn):not(.confirm-btn):not(
-    .scanner-close
-  ) {
+  button:not(.btn):not(.drawer-close-btn):not(.view-toggle-btn):not(
+    .row-reset-btn
+  ):not(.confirm-btn):not(.scanner-close) {
   width: 100%;
   margin-top: 18px;
   border: none;
@@ -273,9 +305,9 @@ body.drawer-open {
 
 .dashboard > button:hover,
 .dashboard
-  button:not(.btn):not(.drawer-close-btn):not(.confirm-btn):not(
-    .scanner-close
-  ):hover {
+  button:not(.btn):not(.drawer-close-btn):not(.view-toggle-btn):not(
+    .row-reset-btn
+  ):not(.confirm-btn):not(.scanner-close):hover {
   background: var(--admin-blue-dark);
 }
 
@@ -428,14 +460,23 @@ body.drawer-open {
   font-weight: 700;
 }
 
-/* Department sort dropdown */
-.dept-sort-wrap {
+/* Filter toolbar (department / slot / attendance selects + view toggle) */
+.filters-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Each filter dropdown gets its own icon + chevron, scoped to itself so
+   icons don't drift when sibling selects change width. */
+.filter-select-wrap {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.dept-sort-icon {
+.filter-select-icon {
   position: absolute;
   left: 12px;
   width: 14px;
@@ -445,11 +486,13 @@ body.drawer-open {
   z-index: 1;
 }
 
-.dept-sort-wrap select {
-  padding: 8px 14px 8px 32px;
+.filter-select-wrap select {
+  padding: 8px 30px 8px 32px;
   border-radius: var(--admin-r-sm);
   border: 1px solid var(--admin-line);
-  background: var(--admin-surface);
+  background: var(--admin-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238ba0b6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")
+    no-repeat right 10px center / 13px 13px;
   color: var(--admin-ink);
   font-size: 0.83rem;
   font-family: inherit;
@@ -460,9 +503,75 @@ body.drawer-open {
   transition: all 0.16s ease;
 }
 
-.dept-sort-wrap select:focus {
+.filter-select-wrap select:hover {
+  border-color: var(--admin-ink-faint);
+}
+
+.filter-select-wrap select:focus {
   border-color: var(--admin-blue);
   box-shadow: 0 0 0 3px rgba(36, 87, 201, 0.14);
+}
+
+/* View toggle (tiles / list) — segmented control */
+.view-toggle {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  top: -3px;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface-alt);
+  margin-left: 4px;
+}
+
+.view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--admin-ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.view-toggle-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+
+.view-toggle-btn:hover {
+  color: var(--admin-ink);
+  background: rgba(16, 31, 51, 0.05);
+}
+
+.view-toggle-btn--active,
+.view-toggle-btn--active:hover {
+  background: transparent;
+  color: var(--admin-blue);
+  box-shadow: inset 0 -2px 0 var(--admin-blue);
+}
+
+@media (max-width: 560px) {
+  .view-toggle-btn span {
+    display: none;
+  }
+
+  .view-toggle-btn {
+    padding: 7px 10px;
+  }
 }
 
 /* =====================
@@ -488,6 +597,268 @@ body.drawer-open {
 }
 
 /* =====================
+   CANDIDATE LIST VIEW
+   ===================== */
+
+.rows-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row-header {
+  display: grid;
+  grid-template-columns:
+    36px minmax(160px, 2fr) 100px minmax(120px, 1.2fr)
+    minmax(110px, 1fr) 90px 70px 110px 76px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  color: var(--admin-ink-faint);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.applicant-row {
+  --row-accent: var(--admin-ink-faint);
+  display: grid;
+  grid-template-columns:
+    36px minmax(160px, 2fr) 100px minmax(120px, 1.2fr)
+    minmax(110px, 1fr) 90px 70px 110px 76px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-line);
+  border-left: 3px solid var(--row-accent);
+  border-radius: var(--admin-r-sm);
+  cursor: pointer;
+  transition:
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.1s ease;
+}
+
+.applicant-row:hover {
+  box-shadow: var(--admin-shadow-sm);
+  border-color: var(--admin-blue);
+}
+
+.applicant-row:focus-visible {
+  outline: none;
+  border-color: var(--admin-blue);
+  box-shadow: 0 0 0 3px rgba(36, 87, 201, 0.14);
+}
+
+.applicant-row--pending {
+  --row-accent: var(--admin-warning);
+}
+.applicant-row--shortlisted {
+  --row-accent: var(--admin-success);
+}
+.applicant-row--rejected {
+  --row-accent: var(--admin-danger);
+}
+
+.row-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--admin-blue-light);
+  color: var(--admin-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.row-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.row-name {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--admin-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-email {
+  font-size: 0.72rem;
+  color: var(--admin-ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-app-no {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--admin-ink-soft);
+  font-family: ui-monospace, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-depts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.tag--sm {
+  padding: 2px 8px;
+  font-size: 0.68rem;
+}
+
+.row-slot {
+  font-size: 0.76rem;
+  color: var(--admin-ink-soft);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-slot--none {
+  color: var(--admin-ink-faint);
+  font-weight: 400;
+}
+
+.row-attendance {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  width: fit-content;
+}
+
+.row-attendance--present {
+  background: var(--admin-success-bg);
+  color: var(--admin-success);
+  border: 1px solid var(--admin-success-line);
+}
+
+.row-attendance--absent {
+  background: var(--admin-danger-bg);
+  color: var(--admin-danger);
+  border: 1px solid var(--admin-danger-line);
+}
+
+.row-attendance--none {
+  color: var(--admin-ink-faint);
+  border: none;
+  background: none;
+  padding-left: 0;
+}
+
+.row-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--admin-success);
+}
+
+.row-score svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+}
+
+.status-badge--sm {
+  padding: 3px 10px;
+  font-size: 0.7rem;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.row-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  top: 0px;
+  width: 21px;
+  height: 21px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--admin-blue-light);
+  color: var(--admin-blue);
+  border: 1px solid rgba(36, 87, 201, 0.2);
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    transform 0.1s ease;
+}
+
+.row-reset-btn svg {
+  width: 11px;
+  height: 11px;
+  stroke: currentColor;
+}
+
+.row-reset-btn:hover {
+  background: #e2eaff;
+  color: #2457c9;
+  border-color: rgba(36, 87, 201, 0.3);
+  transform: scale(1.04);
+}
+
+.row-chevron {
+  width: 15px;
+  height: 15px;
+  stroke: var(--admin-ink-faint);
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .row-header {
+    display: none;
+  }
+
+  .applicant-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .row-identity {
+    flex: 1 1 auto;
+    min-width: 140px;
+  }
+
+  .row-depts {
+    flex-basis: 100%;
+    order: 5;
+  }
+
+  .row-actions {
+    margin-left: auto;
+  }
+}
+
+/* =====================
    CANDIDATE CARD
    ===================== */
 
@@ -502,7 +873,10 @@ body.drawer-open {
   background: var(--admin-surface);
   border: 1px solid var(--admin-line);
   box-shadow: var(--admin-shadow-sm);
-  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s cubic-bezier(0.2, 0.7, 0.3, 1),
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
   cursor: pointer;
   overflow: hidden;
   outline: none;
@@ -766,6 +1140,30 @@ body.drawer-open {
   stroke: currentColor;
 }
 
+/* Present/Absent chip, shown once a candidate has an assigned slot */
+.card-attendance-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.card-attendance-badge--present {
+  background: var(--admin-success-bg);
+  color: var(--admin-success);
+  border: 1px solid var(--admin-success-line);
+}
+
+.card-attendance-badge--absent {
+  background: var(--admin-danger-bg);
+  color: var(--admin-danger);
+  border: 1px solid var(--admin-danger-line);
+}
+
 .card-reset-btn {
   background: var(--admin-danger-bg);
   color: var(--admin-danger);
@@ -817,7 +1215,11 @@ body.drawer-open {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(145deg, var(--admin-blue) 0%, var(--admin-blue-dark) 100%);
+  background: linear-gradient(
+    145deg,
+    var(--admin-blue) 0%,
+    var(--admin-blue-dark) 100%
+  );
   color: white;
   font-weight: 700;
   border-radius: 50%;

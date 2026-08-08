@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { getStatusGroup } from "../utils/candidateHelpers";
+import { getStatusGroup, normalizeBoolean } from "../utils/candidateHelpers";
 
 const DEPT_ORDER = ["Tech", "Design", "Marketing", "Content", "Media"];
 
@@ -13,6 +13,9 @@ export function useCandidateFilters(candidates) {
   const [statusFilter, setStatusFilter] = useState("All");
   const [deptSort, setDeptSort] = useState("All");
   const [slotSort, setSlotSort] = useState("All");
+  // "All" | "Present" | "Absent" — whether the candidate was checked in
+  // (via QR scan or manual override) for their assigned slot.
+  const [attendanceFilter, setAttendanceFilter] = useState("All");
 
   const filteredCandidates = useMemo(() => {
     const filtered = candidates.filter((candidate) => {
@@ -41,7 +44,18 @@ export function useCandidateFilters(candidates) {
             : // If slotSort is a specific slot id, match that id (compare as strings)
               String(candidate.slot_id) === String(slotSort));
 
-      return matchesSearch && matchesStatus && matchesDept && matchesSlot;
+      const isPresent = normalizeBoolean(candidate.quiz_attended);
+      const matchesAttendance =
+        attendanceFilter === "All" ||
+        (attendanceFilter === "Present" ? isPresent : !isPresent);
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesDept &&
+        matchesSlot &&
+        matchesAttendance
+      );
     });
 
     if (slotSort !== "All") {
@@ -69,7 +83,7 @@ export function useCandidateFilters(candidates) {
     }
 
     return filtered;
-  }, [candidates, search, statusFilter, deptSort, slotSort]);
+  }, [candidates, search, statusFilter, deptSort, slotSort, attendanceFilter]);
 
   return {
     search,
@@ -80,6 +94,8 @@ export function useCandidateFilters(candidates) {
     setDeptSort,
     slotSort,
     setSlotSort,
+    attendanceFilter,
+    setAttendanceFilter,
     filteredCandidates,
   };
 }

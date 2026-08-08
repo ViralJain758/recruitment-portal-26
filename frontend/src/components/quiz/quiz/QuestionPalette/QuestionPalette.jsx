@@ -15,8 +15,8 @@ export const QuestionPalette = () => {
   };
 
   return (
-    <Card className="p-4 border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-white dark:bg-[#1a1a1a] lg:flex-1 lg:min-h-[220px] shrink-0 lg:shrink overflow-hidden flex flex-col">
-      <div className="flex items-center justify-between gap-3 mb-3">
+    <Card className="p-3 border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-white dark:bg-[#1a1a1a] lg:flex-1 lg:min-h-[160px] shrink-0 lg:shrink overflow-hidden flex flex-col">
+      <div className="flex items-center justify-between gap-3 mb-2">
         <h4 className="text-xs font-bold text-[#6B7280] dark:text-slate-400 tracking-wider uppercase select-none">Question Palette</h4>
         <span className="text-[11px] font-semibold text-[#94A3B8] dark:text-slate-500">{questions.length} total</span>
       </div>

@@ -9,6 +9,8 @@ import {
   individualUnlockCandidateForm,
   getGlobalLock,
   setGlobalLock,
+  getRegistrationDeadline,
+  setRegistrationDeadline,
   distributeSlots,
   getSlotSummary,
   setSlotActivation,
@@ -31,6 +33,8 @@ export function useCandidates() {
   const [loading, setLoading] = useState(true);
   const [globalLocked, setGlobalLocked] = useState(false);
   const [globalLockLoading, setGlobalLockLoading] = useState(false);
+  const [registrationDeadline, setRegistrationDeadlineState] = useState(null);
+  const [deadlineLoading, setDeadlineLoading] = useState(false);
   const [slotSummary, setSlotSummary] = useState([]);
   const [slotLoading, setSlotLoading] = useState(false);
 
@@ -72,6 +76,30 @@ export function useCandidates() {
       return null;
     } finally {
       setGlobalLockLoading(false);
+    }
+  }
+
+  async function fetchRegistrationDeadline() {
+    try {
+      const response = await getRegistrationDeadline();
+      setRegistrationDeadlineState(response.deadline);
+    } catch (error) {
+      console.error("Failed to fetch registration deadline:", error);
+    }
+  }
+
+  async function updateRegistrationDeadline(deadline) {
+    setDeadlineLoading(true);
+    try {
+      const response = await setRegistrationDeadline(deadline);
+      setRegistrationDeadlineState(response.deadline);
+      return response.deadline;
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Failed to update registration deadline.");
+      return null;
+    } finally {
+      setDeadlineLoading(false);
     }
   }
 
@@ -346,6 +374,7 @@ export function useCandidates() {
   useEffect(() => {
     fetchCandidates();
     fetchGlobalLock();
+    fetchRegistrationDeadline();
     fetchSlotSummary();
     fetchSlotSchedules();
   }, []);
@@ -361,6 +390,10 @@ export function useCandidates() {
 
     function handleGlobalLock({ locked }) {
       setGlobalLocked(locked);
+    }
+
+    function handleDeadlineUpdated({ deadline }) {
+      setRegistrationDeadlineState(deadline);
     }
 
     function handleSlotsDistributed() {
@@ -385,6 +418,7 @@ export function useCandidates() {
     adminSocket.on("candidate:updated", handleCandidateChange);
     adminSocket.on("candidate:deleted", handleCandidateDeleted);
     adminSocket.on("global:lock", handleGlobalLock);
+    adminSocket.on("deadline:updated", handleDeadlineUpdated);
     adminSocket.on("slots:distributed", handleSlotsDistributed);
     adminSocket.on("slots:cleared", handleSlotsCleared);
     adminSocket.on("slots:schedules_updated", handleSchedulesUpdated);
@@ -399,6 +433,7 @@ export function useCandidates() {
       adminSocket.off("candidate:updated", handleCandidateChange);
       adminSocket.off("candidate:deleted", handleCandidateDeleted);
       adminSocket.off("global:lock", handleGlobalLock);
+      adminSocket.off("deadline:updated", handleDeadlineUpdated);
       adminSocket.off("slots:distributed", handleSlotsDistributed);
       adminSocket.off("slots:cleared", handleSlotsCleared);
       adminSocket.off("slots:schedules_updated", handleSchedulesUpdated);
@@ -420,6 +455,9 @@ export function useCandidates() {
     globalLocked,
     globalLockLoading,
     toggleGlobalLock,
+    registrationDeadline,
+    deadlineLoading,
+    updateRegistrationDeadline,
     slotSummary,
     slotLoading,
     runDistributeSlots,

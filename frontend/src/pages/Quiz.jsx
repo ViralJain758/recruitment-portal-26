@@ -12,7 +12,7 @@ import { Card } from '../components/quiz/common/Card';
 import { Button } from '../components/quiz/common/Button';
 import { ThemeToggle } from '../components/quiz/common/ThemeToggle';
 import { useGazeTracking } from '../hooks/useGazeTracking';
-import { Camera, EyeOff, Maximize2, RefreshCw, ShieldAlert, UserCheck } from 'lucide-react';
+import { AlertTriangle, Camera, EyeOff, Maximize2, RefreshCw, ScreenShare, ShieldAlert, UserCheck } from 'lucide-react';
 
 const EXTENSION_SELECTORS = [
   'grammarly-desktop-integration',
@@ -123,7 +123,7 @@ const getExtensionBlockReason = () => {
 };
 
 export const Quiz = () => {
-  const { candidate, examStarted, examCompleted, triggerWarning, setExamPaused } = useExam();
+  const { candidate, examStarted, examCompleted, triggerWarning, setExamPaused, screenRecordingConsent, securityWarnings } = useExam();
   const navigate = useNavigate();
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [extensionBlockReason, setExtensionBlockReason] = useState('');
@@ -138,6 +138,13 @@ export const Quiz = () => {
   const extensionRecheckInProgressRef = useRef(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  // Every getUserMedia() call for this page is funneled through this queue so there is
+  // never more than one in flight at once. This ref lives at component scope (not inside
+  // the effect), so it survives React 18 StrictMode's dev-mode double-invoke of effects on
+  // first mount — without it, that double-invoke fires two overlapping camera requests
+  // back-to-back, which can wedge the browser's camera pipeline so neither one ever
+  // resolves, leaving the UI stuck on "Camera is starting…" forever.
+  const cameraQueueRef = useRef(Promise.resolve());
   
   // Track if the app is actively in fullscreen mode
   const [isFullscreenActive, setIsFullscreenActive] = useState(
@@ -193,91 +200,149 @@ export const Quiz = () => {
     if (!examStarted || examCompleted || !cameraRequested) return;
 
     let cancelled = false;
+    let retryTimeoutId = null;
 
-    const startCamera = async () => {
-      setCameraReady(false);
+    // A hard page reload mid-test destroys and recreates this whole component, so the
+    // browser is asked for the camera again from scratch. Right after a reload the OS/
+    // browser sometimes hasn't fully released the device from the previous page yet,
+    // which makes the very first getUserMedia() call fail transiently (NotReadableError /
+    // AbortError / TrackStartError). Previously that dropped straight to an error state
+    // and required the candidate to click "Retry camera" manually. To make the camera
+    // come back on its own, transient failures are retried silently in the background
+    // for a few seconds before we ever show the manual retry button.
+    const MAX_AUTO_RETRIES = 8;
+    const RETRY_DELAY_MS = 600;
+    // getUserMedia() doesn't just reject on a busy/stuck device in every browser — it can
+    // simply hang and never settle at all, which previously left the UI stuck on "Camera
+    // is starting…" forever with no retry ever kicking in. Racing each call against a
+    // timeout guarantees we always move on to a retry instead of waiting indefinitely.
+    const PER_ATTEMPT_TIMEOUT_MS = 3500;
+
+    const tryGetStream = (constraints) => {
+      const run = () => {
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = window.setTimeout(
+            () => reject(new DOMException('Timed out waiting for camera.', 'TimeoutError')),
+            PER_ATTEMPT_TIMEOUT_MS
+          );
+        });
+
+        const realPromise = navigator.mediaDevices.getUserMedia(constraints);
+
+        const winner = Promise.race([realPromise, timeoutPromise]).finally(() => {
+          window.clearTimeout(timeoutId);
+        });
+
+        // If getUserMedia() eventually resolves *after* we've already given up on it (the
+        // timeout won the race), don't leave that stream dangling — it would keep the
+        // camera locked and could block every attempt after it. Release it immediately.
+        winner.catch(() => {
+          realPromise
+            .then((lateStream) => lateStream.getTracks().forEach((track) => track.stop()))
+            .catch(() => {});
+        });
+
+        return winner;
+      };
+
+      // Chain onto the shared queue so this call only actually fires once every earlier
+      // queued call (from this or an earlier, StrictMode-doubled effect run) has settled.
+      const queued = cameraQueueRef.current.then(run, run);
+      cameraQueueRef.current = queued.catch(() => {});
+      return queued;
+    };
+
+    const attachStream = async (stream) => {
+      streamRef.current = stream;
+      setCameraStream(stream);
       setCameraError('');
+
+      if (videoRef.current) {
+        try {
+          videoRef.current.srcObject = stream;
+          videoRef.current.muted = true;
+          videoRef.current.playsInline = true;
+          videoRef.current.onloadedmetadata = () => {
+            if (!cancelled) {
+              setCameraReady(true);
+            }
+          };
+          await videoRef.current.play();
+          if (!cancelled) {
+            setCameraReady(true);
+          }
+        } catch (playError) {
+          setCameraReady(false);
+          setCameraError('Camera preview could not be started.');
+        }
+      }
+    };
+
+    const acquireCamera = async (attempt = 0) => {
+      if (cancelled) return;
+      setCameraReady(false);
 
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError('Camera access is not supported in this browser.');
         return;
       }
 
-      const tryGetStream = async (constraints) => {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        return stream;
-      };
+      const attempts = [
+        { video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
+        { video: { width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
+        { video: true, audio: false },
+      ];
 
-      try {
-        let stream;
-        const attempts = [
-          { video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
-          { video: { width: { ideal: 320 }, height: { ideal: 240 } }, audio: false },
-          { video: true, audio: false },
-        ];
-
-        for (const constraints of attempts) {
-          try {
-            stream = await tryGetStream(constraints);
-            break;
-          } catch (error) {
-            if (constraints === attempts[attempts.length - 1]) {
-              throw error;
-            }
-          }
+      let stream;
+      let lastError;
+      for (const constraints of attempts) {
+        try {
+          stream = await tryGetStream(constraints);
+          break;
+        } catch (error) {
+          lastError = error;
         }
+      }
 
-        if (!stream) {
-          throw new Error('No camera stream available.');
-        }
+      if (cancelled) {
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
+      if (!stream) {
+        const errorName = lastError?.name || '';
+        const isPermissionError =
+          errorName === 'NotAllowedError' ||
+          errorName === 'PermissionDeniedError' ||
+          errorName === 'SecurityError';
+
+        if (!isPermissionError && attempt < MAX_AUTO_RETRIES) {
+          // Device likely still tied up releasing from the previous session — back off
+          // briefly and try again without bothering the candidate.
+          retryTimeoutId = window.setTimeout(() => {
+            if (!cancelled) acquireCamera(attempt + 1);
+          }, RETRY_DELAY_MS);
           return;
         }
 
-        streamRef.current = stream;
-        setCameraStream(stream);
-        setCameraError('');
-
-        if (videoRef.current) {
-          try {
-            videoRef.current.srcObject = stream;
-            videoRef.current.muted = true;
-            videoRef.current.playsInline = true;
-            videoRef.current.onloadedmetadata = () => {
-              if (!cancelled) {
-                setCameraReady(true);
-              }
-            };
-            await videoRef.current.play();
-            if (!cancelled) {
-              setCameraReady(true);
-            }
-          } catch (playError) {
-            setCameraReady(false);
-            setCameraError('Camera preview could not be started.');
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setCameraError('Camera permission is required for proctoring.');
-          setCameraReady(false);
-        }
+        setCameraError(
+          isPermissionError
+            ? 'Camera permission is required for proctoring.'
+            : 'Camera permission was not granted or the device is unavailable.'
+        );
+        setCameraReady(false);
+        return;
       }
+
+      await attachStream(stream);
     };
 
-    const fallbackTimer = window.setTimeout(() => {
-      if (!cancelled && !cameraReady && !cameraStream) {
-        setCameraError('Camera permission was not granted or the device is unavailable.');
-      }
-    }, 4000);
-
-    startCamera();
+    acquireCamera();
 
     return () => {
-      window.clearTimeout(fallbackTimer);
       cancelled = true;
+      if (retryTimeoutId) window.clearTimeout(retryTimeoutId);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -415,6 +480,58 @@ export const Quiz = () => {
     const handleContextMenu = (e) => {
       e.preventDefault();
     };
+
+    // KEYBOARD LOCKDOWN: Best-effort blocking of shortcuts that open, close,
+    // or switch browser tabs/windows, plus devtools/reload/print/save/back-
+    // navigation shortcuts. Note this is a genuine best effort, not a
+    // guarantee — Chrome, Firefox, and Safari deliberately reserve some of
+    // these (Ctrl/Cmd+T, +N, +W, Ctrl+Tab, Alt+Tab, Cmd+Tab) at the browser-
+    // chrome or OS level specifically so a webpage's JavaScript can never
+    // trap the user inside a tab. Those keep working no matter what a page
+    // does; only the shortcuts a page is actually allowed to intercept
+    // (devtools, reload, print, save, view-source, back/forward nav) are
+    // reliably stopped here. A switch away is still caught afterwards by
+    // the visibility/blur/fullscreen listeners above.
+    const handleKeyDown = (e) => {
+      const key = e.key?.toLowerCase();
+      const ctrlOrCmd = e.ctrlKey || e.metaKey;
+
+      const blockedCombos =
+        // New tab / window / reopen closed tab / close tab
+        (ctrlOrCmd && ['t', 'n', 'w'].includes(key)) ||
+        (ctrlOrCmd && e.shiftKey && ['t', 'n'].includes(key)) ||
+        // Switch tabs
+        (ctrlOrCmd && key === 'tab') ||
+        (e.altKey && key === 'tab') ||
+        // DevTools
+        key === 'f12' ||
+        (ctrlOrCmd && e.shiftKey && ['i', 'j', 'c'].includes(key)) ||
+        // View source / save / print / reload
+        (ctrlOrCmd && key === 'u') ||
+        (ctrlOrCmd && key === 's') ||
+        (ctrlOrCmd && key === 'p') ||
+        (ctrlOrCmd && key === 'r') ||
+        key === 'f5' ||
+        // Fullscreen toggle
+        key === 'f11' ||
+        // Back/forward navigation
+        (e.altKey && ['arrowleft', 'arrowright'].includes(key)) ||
+        (key === 'backspace' && !['input', 'textarea'].includes(document.activeElement?.tagName?.toLowerCase()));
+
+      if (blockedCombos) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    // Adds browser-native friction to closing the tab, reloading, or
+    // navigating away mid-exam. Browsers show their own generic confirmation
+    // text regardless of the message passed here.
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleBlur);
@@ -426,6 +543,8 @@ export const Quiz = () => {
     // Bind trackpad defensive listeners with passive flag set to false to support preventDefault()
     window.addEventListener('wheel', handleWheelZoom, { passive: false });
     document.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -437,6 +556,8 @@ export const Quiz = () => {
       
       window.removeEventListener('wheel', handleWheelZoom);
       document.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [examStarted, examCompleted, setExamPaused]);
 
@@ -552,6 +673,16 @@ export const Quiz = () => {
             <div className="font-mono text-xs font-bold text-[#0067B8] dark:text-slate-100 bg-[#0067B8]/10 dark:bg-white/5 border border-[#0067B8]/15 dark:border-[rgba(161,161,170,0.18)] rounded-lg px-3 py-2 w-fit">
               {candidate.enrollmentNumber || candidate.applicationId}
             </div>
+            <div
+              className={`flex items-center gap-1.5 font-mono text-xs font-bold rounded-lg px-3 py-2 w-fit border ${
+                securityWarnings > 0
+                  ? 'text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/15 border-red-200 dark:border-red-500/30'
+                  : 'text-[#64748B] dark:text-slate-300 bg-[#F8FAFC] dark:bg-white/5 border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)]'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              Warnings: {securityWarnings}/3
+            </div>
             <TimerCard />
             <ThemeToggle />
           </div>
@@ -561,12 +692,12 @@ export const Quiz = () => {
       {(proctorWarning || gazeMessage) && (
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 space-y-2">
           {proctorWarning && (
-            <div className="rounded-lg border border-amber-200 dark:border-[rgba(161,161,170,0.18)] bg-amber-50 dark:bg-[#121212] px-4 py-3 text-sm font-medium text-amber-800 dark:text-slate-300 shadow-sm">
+            <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15 px-4 py-3 text-sm font-medium text-amber-800 dark:text-amber-300 shadow-sm">
               {proctorWarning}
             </div>
           )}
           {gazeMessage && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-200 dark:border-[rgba(161,161,170,0.18)] bg-amber-50 dark:bg-[#121212] px-4 py-3 text-sm font-medium text-amber-800 dark:text-slate-300 shadow-sm">
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15 px-4 py-3 text-sm font-medium text-amber-800 dark:text-amber-300 shadow-sm">
               <EyeOff className="w-4 h-4 shrink-0" />
               {gazeMessage}
             </div>
@@ -578,8 +709,8 @@ export const Quiz = () => {
         <div className="min-h-[520px] lg:min-h-0 lg:h-full overflow-hidden flex flex-col">
           <QuestionCard />
         </div>
-        <div className="min-h-0 space-y-3 lg:h-full overflow-y-auto flex flex-col pr-0.5">
-          <div className="rounded-xl border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-white dark:bg-[#1a1a1a] p-2.5 shadow-sm shrink-0">
+        <div className="min-h-0 space-y-2.5 lg:h-full overflow-y-auto lg:overflow-hidden flex flex-col pr-0.5">
+          <div className="rounded-xl border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-white dark:bg-[#1a1a1a] p-2 shadow-sm shrink-0">
             <div className="flex items-center gap-2 mb-1.5">
               <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-white/5 text-[#0067B8] dark:text-slate-100 flex items-center justify-center shrink-0">
                 <Camera className="w-3 h-3" />
@@ -589,7 +720,7 @@ export const Quiz = () => {
                 <p className="text-[8px] font-bold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-400">Proctoring</p>
               </div>
             </div>
-            <div className="relative w-full aspect-video overflow-hidden rounded-lg border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-black/90">
+            <div className="relative w-full h-40 sm:h-48 overflow-hidden rounded-lg border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-black/90">
               <video
                 ref={videoRef}
                 muted
@@ -597,6 +728,15 @@ export const Quiz = () => {
                 autoPlay
                 className={`absolute inset-0 h-full w-full object-cover ${cameraStream && cameraReady ? '' : 'hidden'}`}
               />
+              {cameraStream && cameraReady && (
+                <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-[3px] backdrop-blur-sm">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                  </span>
+                  <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-white">Rec</span>
+                </div>
+              )}
               {!(cameraStream && cameraReady) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#121212] px-3 text-center text-xs text-slate-300">
                   <span>{cameraError || 'Camera is starting…'}</span>
@@ -612,7 +752,18 @@ export const Quiz = () => {
                 </div>
               )}
             </div>
+            {screenRecordingConsent && (
+              <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-[#E5E7EB] dark:border-[rgba(161,161,170,0.18)] bg-[#F8FAFC] dark:bg-white/5 px-2 py-1">
+                <ScreenShare className="w-3 h-3 text-[#64748B] dark:text-slate-400" />
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-400">Screen recording in progress</span>
+              </div>
+            )}
           </div>
+
           <QuestionPalette />
         </div>
       </div>

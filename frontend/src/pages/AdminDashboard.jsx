@@ -5,6 +5,7 @@ import "./AdminDashboard.css";
 import mlscLogo from "../assets/MLSC-logo.png";
 
 import CandidateCard from "../components/CandidateCard";
+import CandidateListRow from "../components/CandidateListRow";
 import CandidateDrawer from "../components/CandidateDrawer";
 import StatsGrid from "../components/StatsGrid";
 import SlotDistribution from "../components/SlotDistribution";
@@ -15,9 +16,37 @@ import { useCandidateFilters } from "../hooks/useCandidateFilters";
 import { logoutSession } from "../lib/api";
 import { calculateStats } from "../utils/candidateHelpers";
 
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in local time; Date's
+// toISOString() gives UTC, so build the string from local getters instead.
+function toDatetimeLocalValue(dateLike) {
+  if (!dateLike) return "";
+  const d = new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [deadlineDraft, setDeadlineDraft] = useState("");
+  const [deadlineDirty, setDeadlineDirty] = useState(false);
+  const [viewMode, setViewMode] = useState(() =>
+    typeof window !== "undefined"
+      ? localStorage.getItem("adminCandidateView") || "tiles"
+      : "tiles",
+  );
+
+  const setAndPersistViewMode = (mode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("adminCandidateView", mode);
+    } catch {
+      // ignore storage errors (e.g. private browsing)
+    }
+  };
 
   const {
     candidates,
@@ -32,6 +61,9 @@ export default function AdminDashboard() {
     globalLocked,
     globalLockLoading,
     toggleGlobalLock,
+    registrationDeadline,
+    deadlineLoading,
+    updateRegistrationDeadline,
     slotSummary,
     slotLoading,
     runDistributeSlots,
@@ -57,6 +89,8 @@ export default function AdminDashboard() {
     setDeptSort,
     slotSort,
     setSlotSort,
+    attendanceFilter,
+    setAttendanceFilter,
     filteredCandidates,
   } = useCandidateFilters(candidates);
 
@@ -69,6 +103,22 @@ export default function AdminDashboard() {
       window.location.reload();
     }
   }, []);
+
+  // Keep the draft input in sync with the server value, but don't clobber
+  // the admin's in-progress edit once they've started changing it.
+  useEffect(() => {
+    if (!deadlineDirty && registrationDeadline) {
+      setDeadlineDraft(toDatetimeLocalValue(registrationDeadline));
+    }
+  }, [registrationDeadline, deadlineDirty]);
+
+  const handleSaveDeadline = async () => {
+    if (!deadlineDraft) return;
+    const result = await updateRegistrationDeadline(
+      new Date(deadlineDraft).toISOString(),
+    );
+    if (result) setDeadlineDirty(false);
+  };
 
   useEffect(() => {
     const hadDarkTheme = document.documentElement.classList.contains("dark");
@@ -181,6 +231,32 @@ export default function AdminDashboard() {
                 </>
               )}
             </button>
+
+            {/* ── Registration & edit deadline ── */}
+            <div className="deadline-editor">
+              <label htmlFor="registration-deadline-input">
+                Registration deadline
+              </label>
+              <input
+                id="registration-deadline-input"
+                type="datetime-local"
+                value={deadlineDraft}
+                onChange={(e) => {
+                  setDeadlineDraft(e.target.value);
+                  setDeadlineDirty(true);
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={handleSaveDeadline}
+                disabled={deadlineLoading || !deadlineDraft}
+                title="Save the registration & edit deadline"
+              >
+                {deadlineLoading ? "Saving…" : "Save"}
+              </button>
+            </div>
+
             <button
               className="btn btn--secondary"
               onClick={() => navigate("/scanner")}
@@ -295,60 +371,157 @@ export default function AdminDashboard() {
             {statusFilter === "All"
               ? "All Candidates"
               : `${statusFilter} Candidates`}
+            {attendanceFilter !== "All" ? ` · ${attendanceFilter}` : ""}
           </h2>
           {!loading && (
             <span className="count-badge">{filteredCandidates.length}</span>
           )}
         </div>
 
-        <div className="dept-sort-wrap">
-          <svg
-            className="dept-sort-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+        <div className="filters-toolbar">
+          <div className="filter-select-wrap">
+            <svg
+              className="filter-select-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="21" y1="10" x2="3" y2="10" />
+              <line x1="21" y1="6" x2="3" y2="6" />
+              <line x1="21" y1="14" x2="3" y2="14" />
+              <line x1="21" y1="18" x2="3" y2="18" />
+            </svg>
+            <select
+              value={deptSort}
+              onChange={(e) => setDeptSort(e.target.value)}
+              aria-label="Filter by department"
+            >
+              <option value="All">All Departments</option>
+              <option value="Tech">Tech</option>
+              <option value="Design">Design</option>
+              <option value="Marketing">Marketing</option>
+              <option value="Content">Content</option>
+              <option value="Media">Media</option>
+            </select>
+          </div>
+
+          <div className="filter-select-wrap">
+            <svg
+              className="filter-select-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="4" width="18" height="17" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+            </svg>
+            <select
+              value={slotSort}
+              onChange={(e) => setSlotSort(e.target.value)}
+              aria-label="Filter by slot"
+            >
+              <option value="All">All Slots</option>
+              <option value="Assigned">Assigned Slots</option>
+              <option value="Unassigned">Unassigned Slots</option>
+              {Array.isArray(slotSummary) && slotSummary.length > 0 ? (
+                <optgroup label="By Slot">
+                  {slotSummary.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {formatSlotSummary(s.id, slotSummary, slotSchedules) ||
+                        `Day ${s.slot_day} · Slot ${s.slot_number} · ${s.slot_venue}`}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </div>
+
+          <div className="filter-select-wrap">
+            <svg
+              className="filter-select-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 12l2 2 4-4" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+            <select
+              value={attendanceFilter}
+              onChange={(e) => setAttendanceFilter(e.target.value)}
+              aria-label="Filter by attendance"
+            >
+              <option value="All">Present &amp; Absent</option>
+              <option value="Present">Present Only</option>
+              <option value="Absent">Absent Only</option>
+            </select>
+          </div>
+
+          <div
+            className="view-toggle"
+            role="group"
+            aria-label="Switch candidate view"
           >
-            <line x1="21" y1="10" x2="3" y2="10" />
-            <line x1="21" y1="6" x2="3" y2="6" />
-            <line x1="21" y1="14" x2="3" y2="14" />
-            <line x1="21" y1="18" x2="3" y2="18" />
-          </svg>
-          <select
-            value={deptSort}
-            onChange={(e) => setDeptSort(e.target.value)}
-            aria-label="Filter by department"
-          >
-            <option value="All">All Departments</option>
-            <option value="Tech">Tech</option>
-            <option value="Design">Design</option>
-            <option value="Marketing">Marketing</option>
-            <option value="Content">Content</option>
-            <option value="Media">Media</option>
-          </select>
-          <select
-            value={slotSort}
-            onChange={(e) => setSlotSort(e.target.value)}
-            aria-label="Filter by slot"
-            style={{ marginLeft: 8 }}
-          >
-            <option value="All">All Slots</option>
-            <option value="Assigned">Assigned Slots</option>
-            <option value="Unassigned">Unassigned Slots</option>
-            {Array.isArray(slotSummary) && slotSummary.length > 0 ? (
-              <optgroup label="By Slot">
-                {slotSummary.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {formatSlotSummary(s.id, slotSummary, slotSchedules) ||
-                      `Day ${s.slot_day} · Slot ${s.slot_number} · ${s.slot_venue}`}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-          </select>
+            <button
+              type="button"
+              className={`view-toggle-btn ${viewMode === "tiles" ? "view-toggle-btn--active" : ""}`}
+              onClick={() => setAndPersistViewMode("tiles")}
+              title="Tile view"
+              aria-pressed={viewMode === "tiles"}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                <rect x="14" y="14" width="7" height="7" rx="1.5" />
+              </svg>
+              <span>Tiles</span>
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn ${viewMode === "list" ? "view-toggle-btn--active" : ""}`}
+              onClick={() => setAndPersistViewMode("list")}
+              title="List view"
+              aria-pressed={viewMode === "list"}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+              <span>List</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -362,18 +535,44 @@ export default function AdminDashboard() {
           <p>Loading candidates…</p>
         </div>
       ) : (
-        <div className="cards-container">
+        <div className={viewMode === "list" ? "rows-container" : "cards-container"}>
           {filteredCandidates.length ? (
-            filteredCandidates.map((candidate) => (
-              <CandidateCard
-                key={candidate.id}
-                candidate={candidate}
-                onSelect={setSelectedCandidate}
-                slotSummary={slotSummary}
-                slotSchedules={slotSchedules}
-                onResetQuiz={handleResetCandidateQuiz}
-              />
-            ))
+            viewMode === "list" ? (
+              <>
+                <div className="row-header" aria-hidden="true">
+                  <span className="row-header-avatar" />
+                  <span className="row-header-identity">Candidate</span>
+                  <span className="row-header-app-no">App No.</span>
+                  <span className="row-header-depts">Departments</span>
+                  <span className="row-header-slot">Slot</span>
+                  <span className="row-header-attendance">Attendance</span>
+                  <span className="row-header-score">Score</span>
+                  <span className="row-header-status">Status</span>
+                  <span className="row-header-actions" />
+                </div>
+                {filteredCandidates.map((candidate) => (
+                  <CandidateListRow
+                    key={candidate.id}
+                    candidate={candidate}
+                    onSelect={setSelectedCandidate}
+                    slotSummary={slotSummary}
+                    slotSchedules={slotSchedules}
+                    onResetQuiz={handleResetCandidateQuiz}
+                  />
+                ))}
+              </>
+            ) : (
+              filteredCandidates.map((candidate) => (
+                <CandidateCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  onSelect={setSelectedCandidate}
+                  slotSummary={slotSummary}
+                  slotSchedules={slotSchedules}
+                  onResetQuiz={handleResetCandidateQuiz}
+                />
+              ))
+            )
           ) : (
             <div className="empty-candidates">
               <div className="empty-icon" aria-hidden="true">
@@ -398,7 +597,8 @@ export default function AdminDashboard() {
               {(search ||
                 statusFilter !== "All" ||
                 deptSort !== "All" ||
-                slotSort !== "All") && (
+                slotSort !== "All" ||
+                attendanceFilter !== "All") && (
                 <button
                   className="btn btn--ghost empty-reset"
                   onClick={() => {
@@ -406,6 +606,7 @@ export default function AdminDashboard() {
                     setStatusFilter("All");
                     setDeptSort("All");
                     setSlotSort("All");
+                    setAttendanceFilter("All");
                   }}
                 >
                   Clear filters

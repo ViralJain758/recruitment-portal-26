@@ -1,4 +1,5 @@
 import { formatSlotSummary } from "../utils/slotResolver";
+import { normalizeBoolean } from "../utils/candidateHelpers";
 
 const STATUS_CLASS = {
   pending: "status--pending",
@@ -37,6 +38,7 @@ export default function CandidateCard({
   );
   const hasScore =
     candidate.quiz_score !== null && candidate.quiz_score !== undefined;
+  const isPresent = normalizeBoolean(candidate.quiz_attended);
 
   return (
     <div
@@ -124,6 +126,13 @@ export default function CandidateCard({
                 <line x1="3" y1="10" x2="21" y2="10" />
               </svg>
               {slotLabel}
+            </span>
+          )}
+          {candidate.slot_id && (
+            <span
+              className={`card-attendance-badge ${isPresent ? "card-attendance-badge--present" : "card-attendance-badge--absent"}`}
+            >
+              {isPresent ? "Present" : "Absent"}
             </span>
           )}
         </div>
