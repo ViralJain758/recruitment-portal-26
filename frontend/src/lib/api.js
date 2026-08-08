@@ -5,19 +5,28 @@ const apiBaseUrl = (
 async function request(path, options = {}) {
   const { headers, ...requestOptions } = options;
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...requestOptions,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      ...requestOptions,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(headers || {}),
+      },
+    });
+  } catch {
+    throw new Error(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
+  }
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.message || "Request failed.");
+    const error = new Error(data.message || "Request failed.");
+    error.status = response.status;
+    throw error;
   }
 
   return data;
