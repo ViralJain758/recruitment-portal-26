@@ -67,11 +67,21 @@ export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
     setIsModalOpen(true);
   };
 
+function getSafeOptionsArray(rawOptions) {
+  if (Array.isArray(rawOptions)) return rawOptions;
+  if (typeof rawOptions === "string") {
+    try {
+      const parsed = JSON.parse(rawOptions);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+}
+
   const handleOpenEditModal = (q) => {
     setEditingQuestion(q);
-    const opts = Array.isArray(q.options)
-      ? q.options.map((o) => (typeof o === "object" ? o.value : o))
-      : ["", "", "", ""];
+    const rawOpts = getSafeOptionsArray(q.options || q.options_json);
+    const opts = rawOpts.map((o) => (typeof o === "object" ? o.value : String(o ?? "")));
 
     while (opts.length < 4) opts.push("");
 
@@ -427,33 +437,32 @@ export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
 
               {/* Options */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.5rem" }}>
-                {Array.isArray(q.options) &&
-                  q.options.map((opt, oIdx) => {
-                    const optVal = typeof opt === "object" ? opt.value : opt;
-                    const isCorrect = oIdx === q.correct_answer_index;
-                    return (
-                      <div
-                        key={oIdx}
-                        style={{
-                          padding: "0.5rem 0.75rem",
-                          borderRadius: "0.375rem",
-                          backgroundColor: isCorrect ? "rgba(34, 197, 94, 0.15)" : "#0f172a",
-                          border: isCorrect ? "1px solid #22c55e" : "1px solid #1e293b",
-                          fontSize: "0.875rem",
-                          color: isCorrect ? "#86efac" : "#cbd5e1",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        <span style={{ fontWeight: "700", opacity: 0.7 }}>
-                          {String.fromCharCode(65 + oIdx)}.
-                        </span>
-                        <span>{optVal}</span>
-                        {isCorrect && <span style={{ marginLeft: "auto", fontWeight: "bold" }}>✓</span>}
-                      </div>
-                    );
-                  })}
+                {getSafeOptionsArray(q.options || q.options_json).map((opt, oIdx) => {
+                  const optVal = typeof opt === "object" ? opt.value : String(opt ?? "");
+                  const isCorrect = oIdx === Number(q.correct_answer_index);
+                  return (
+                    <div
+                      key={oIdx}
+                      style={{
+                        padding: "0.5rem 0.75rem",
+                        borderRadius: "0.375rem",
+                        backgroundColor: isCorrect ? "rgba(34, 197, 94, 0.15)" : "#0f172a",
+                        border: isCorrect ? "1px solid #22c55e" : "1px solid #1e293b",
+                        fontSize: "0.875rem",
+                        color: isCorrect ? "#86efac" : "#cbd5e1",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <span style={{ fontWeight: "700", opacity: 0.7 }}>
+                        {String.fromCharCode(65 + oIdx)}.
+                      </span>
+                      <span>{optVal}</span>
+                      {isCorrect && <span style={{ marginLeft: "auto", fontWeight: "bold" }}>✓</span>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -720,3 +729,46 @@ export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
     </div>
   );
 }
+
+class QuizErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("QuizQuestionsManager Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "2rem", backgroundColor: "#1e293b", color: "#fca5a5", borderRadius: "0.75rem", margin: "1.5rem", border: "1px solid #334155" }}>
+          <h3 style={{ marginTop: 0 }}>Quiz Questions Manager encountered an error.</h3>
+          <p style={{ color: "#cbd5e1" }}>{this.state.error?.message || "An unexpected rendering error occurred."}</p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{ padding: "0.5rem 1rem", backgroundColor: "#6366f1", color: "#fff", border: "none", borderRadius: "0.375rem", cursor: "pointer", fontWeight: "600" }}
+          >
+            Reload Quiz Manager
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function SafeQuizQuestionsManager(props) {
+  return (
+    <QuizErrorBoundary>
+      <QuizQuestionsManager {...props} />
+    </QuizErrorBoundary>
+  );
+}
+
+export default SafeQuizQuestionsManager;

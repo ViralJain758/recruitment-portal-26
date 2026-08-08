@@ -344,10 +344,20 @@ export default function AdminDashboard() {
       </header>
 
       {activeTab === "questions" ? (
-        <QuizQuestionsManager
-          days={slotSchedules?.days || [1, 2, 3]}
-          slots={slotSchedules?.slots || [1, 2, 3]}
-        />
+        <main className="main-content" style={{ marginTop: "1.5rem" }}>
+          <QuizQuestionsManager
+            days={
+              Array.isArray(slotSchedules?.days) && slotSchedules.days.length > 0
+                ? slotSchedules.days.map((d) => (typeof d === "object" ? d.day_number || d.day || 1 : d))
+                : [1, 2, 3]
+            }
+            slots={
+              Array.isArray(slotSchedules?.times) && slotSchedules.times.length > 0
+                ? slotSchedules.times.map((t) => (typeof t === "object" ? t.slot_number || t.slot || 1 : t))
+                : [1, 2, 3]
+            }
+          />
+        </main>
       ) : (
         <>
           {/* ── Stats ── */}

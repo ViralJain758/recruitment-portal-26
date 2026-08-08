@@ -496,10 +496,20 @@ export async function listQuizQuestionBank(filters = {}) {
     args,
   });
 
-  return result.rows.map((row) => ({
-    ...row,
-    options: JSON.parse(row.options_json),
-  }));
+  return result.rows.map((row) => {
+    let options = [];
+    if (row.options_json) {
+      try {
+        options = typeof row.options_json === "string" ? JSON.parse(row.options_json) : row.options_json;
+      } catch {
+        options = [];
+      }
+    }
+    return {
+      ...row,
+      options: Array.isArray(options) ? options : [],
+    };
+  });
 }
 
 export async function createQuizQuestion(questionData) {
