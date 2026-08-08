@@ -20,6 +20,13 @@ function makeLimiter(name, { windowMs, limit, message, ...options }) {
     limit,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: (req) => {
+      const auth = req.headers.authorization;
+      if (auth && auth.startsWith("Bearer ")) {
+        return auth.slice(7);
+      }
+      return req.ip;
+    },
     message: message ? { message } : undefined,
     skip: isLoadTestBypassRequest,
     ...options,

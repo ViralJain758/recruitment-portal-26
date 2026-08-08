@@ -603,21 +603,44 @@ async function ensureSlotSchema() {
   );
 }
 
-await ensureBaseSchema();
-await ensureSlotSchema();
-await ensureSlotActivationColumn();
-await ensureEmailVerificationsTable();
-await ensureQuizQuestionsTable();
+let schemaInitPromise = null;
 
-httpServer.listen(port, 2048, () => {
-  logger.info("Server started", {
-    port,
-    environment: process.env.NODE_ENV || "development",
+export async function initSchemaIfNeeded() {
+  if (!schemaInitPromise) {
+    schemaInitPromise = (async () => {
+      await ensureBaseSchema();
+      await ensureSlotSchema();
+      await ensureSlotActivationColumn();
+      await ensureEmailVerificationsTable();
+      await ensureQuizQuestionsTable();
+    })().catch((err) => {
+      schemaInitPromise = null;
+      logger.error("Failed to initialize database schema", { error: err.message, stack: err.stack });
+      throw err;
+    });
+  }
+  return schemaInitPromise;
+}
+
+const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+
+if (!isVercel) {
+  initSchemaIfNeeded().catch((err) => {
+    logger.error("Database schema initialization failed at startup", { error: err.message });
   });
-  logger.info("Quiz submit worker started", {
-    concurrency: process.env.QUIZ_SUBMIT_CONCURRENCY || "50",
+
+  httpServer.listen(port, 2048, () => {
+    logger.info("Server started", {
+      port,
+      environment: process.env.NODE_ENV || "development",
+    });
+    if (quizSubmitWorker) {
+      logger.info("Quiz submit worker started", {
+        concurrency: process.env.QUIZ_SUBMIT_CONCURRENCY || "50",
+      });
+    }
   });
-});
+}
 
 // Drain in-flight quiz submissions and close Redis connections cleanly on
 // shutdown instead of dropping jobs mid-write. `worker.close()` waits for
@@ -625,10 +648,10 @@ httpServer.listen(port, 2048, () => {
 async function shutdown(signal) {
   logger.info("Shutting down", { signal });
   try {
-    await quizSubmitWorker.close();
-    await quizSubmitQueueEvents.close();
-    await quizSubmitQueue.close();
-    await redisConnection.quit();
+    if (quizSubmitWorker) await quizSubmitWorker.close();
+    if (quizSubmitQueueEvents) await quizSubmitQueueEvents.close();
+    if (quizSubmitQueue) await quizSubmitQueue.close();
+    if (redisConnection) await redisConnection.quit();
   } catch (error) {
     logger.error("Error during shutdown", { error: error.message });
   } finally {

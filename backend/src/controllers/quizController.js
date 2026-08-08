@@ -3,7 +3,7 @@ import {
   userFromAccessTokenPayload,
   userFromToken,
 } from "../services/authService.js";
-import { fetchQuizQuestionsForUser } from "../services/quizService.js";
+import { fetchQuizQuestionsForUser, submitQuizForUser } from "../services/quizService.js";
 import {
   quizSubmitQueue,
   quizSubmitJobId,
@@ -35,11 +35,10 @@ export async function getQuizQuestions(req, res) {
 export async function submitQuiz(req, res) {
   try {
     const token = bearerToken(req);
-    // Keep the hot submission path Redis-first. Verifying the JWT locally
-    // avoids doing hundreds/thousands of pre-queue DB reads during a slot
-    // timer burst. The worker still validates the candidate/profile/slot in
-    // submitQuizForUser before writing any score.
-    const user = token ? userFromAccessTokenPayload(token) : null;
+    let user = token ? userFromAccessTokenPayload(token) : null;
+    if (!user && token) {
+      user = await userFromToken(token);
+    }
 
     if (!user) {
       return res.status(401).json({
@@ -49,9 +48,13 @@ export async function submitQuiz(req, res) {
 
     const { responses = {} } = req.body || {};
 
-    // Redis is the durable handoff. The request returns as soon as BullMQ
-    // accepts the job so thousands of candidates do not keep sockets open
-    // while the worker drains database writes at controlled concurrency.
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+
+    if (isVercel || !quizSubmitQueue) {
+      const result = await submitQuizForUser(user.id, responses);
+      return res.json(result);
+    }
+
     const job = await quizSubmitQueue.add(
       "submit",
       { userId: user.id, responses },
@@ -67,9 +70,8 @@ export async function submitQuiz(req, res) {
   } catch (error) {
     (req.log || logger).error("API error", { error: error.message, stack: error.stack });
 
-    return res.status(503).json({
-      message:
-        "Your submission could not be queued right now. Retrying automatically.",
+    return res.status(error.statusCode || 400).json({
+      message: error.message || "Failed to submit quiz.",
     });
   }
 }

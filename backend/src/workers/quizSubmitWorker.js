@@ -32,42 +32,45 @@ function isNonRetryable(error) {
   );
 }
 
-export const quizSubmitWorker = new Worker(
-  QUIZ_SUBMIT_QUEUE_NAME,
-  async (job) => {
-    const { userId, responses } = job.data;
+export const quizSubmitWorker = redisConnection
+  ? new Worker(
+      QUIZ_SUBMIT_QUEUE_NAME,
+      async (job) => {
+        const { userId, responses } = job.data;
 
-    try {
-      return await submitQuizForUser(userId, responses);
-    } catch (error) {
-      if (isNonRetryable(error)) {
-        throw new UnrecoverableError(error.message);
-      }
-      // Anything else (transient Turso/network hiccup, etc.) is left to
-      // throw normally so BullMQ's retry/backoff (configured on the queue)
-      // kicks in.
-      throw error;
-    }
-  },
-  {
-    connection: redisConnection.duplicate(),
-    concurrency: CONCURRENCY,
-  },
-);
+        try {
+          return await submitQuizForUser(userId, responses);
+        } catch (error) {
+          if (isNonRetryable(error)) {
+            throw new UnrecoverableError(error.message);
+          }
+          throw error;
+        }
+      },
+      {
+        connection: redisConnection.duplicate(),
+        concurrency: CONCURRENCY,
+      },
+    )
+  : null;
 
-quizSubmitWorker.on("failed", (job, error) => {
-  logger.error("Quiz submission job failed", {
-    jobId: job?.id,
-    userId: job?.data?.userId,
-    attemptsMade: job?.attemptsMade,
-    error: error.message,
+if (quizSubmitWorker) {
+  quizSubmitWorker.on("failed", (job, error) => {
+    logger.error("Quiz submission job failed", {
+      jobId: job?.id,
+      userId: job?.data?.userId,
+      attemptsMade: job?.attemptsMade,
+      error: error.message,
+    });
   });
-});
 
-quizSubmitWorker.on("error", (error) => {
-  logger.error("Quiz submit worker error", { error: error.message });
-});
+  quizSubmitWorker.on("error", (error) => {
+    logger.error("Quiz submit worker error", { error: error.message });
+  });
+}
 
 export async function closeQuizSubmitWorker() {
-  await quizSubmitWorker.close();
+  if (quizSubmitWorker) {
+    await quizSubmitWorker.close();
+  }
 }
