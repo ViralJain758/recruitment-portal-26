@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { markAttendance, getAttendanceStats } from "../lib/api";
 
-export default function AttendanceScanner({ adminBypass = false, onClose, scannerPassword }) {
+export default function AttendanceScanner({
+  adminBypass = false,
+  onClose,
+  onAuthExpired,
+  scannerPassword,
+}) {
   const scannerRef = useRef(null);
   const isScanningRef = useRef(false);
   const isSubmittingRef = useRef(false);
@@ -24,6 +29,7 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
     totalCandidates: 0,
     presentCandidates: 0,
   });
+  const [statsError, setStatsError] = useState("");
   const [slotFilter, setSlotFilter] = useState("all");
   const [history, setHistory] = useState([]);
 
@@ -195,14 +201,31 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
       lastScanRef.current = "";
       errorSoundRef.current.currentTime = 0;
       errorSoundRef.current.play().catch(() => {});
+
+      if (error.status === 401) {
+        // Our own scanner session/password was rejected — this is an auth
+        // problem, not a bad QR code. Don't blame the candidate's code for it.
+        setResult({
+          type: "error",
+          title: "Scanner Session Expired",
+          message:
+            "Your scanner session has expired. Please re-enter the scanner password.",
+        });
+        addToast("error", "Scanner session expired — please sign in again.");
+        onAuthExpired?.();
+        return;
+      }
+
       const msg = error.message || "Attendance update failed.";
       const isNotYet =
         msg.toLowerCase().includes("not valid yet") ||
         msg.toLowerCase().includes("unlocks");
       const isInvalidQr =
-        msg.toLowerCase().includes("not found") ||
-        msg.toLowerCase().includes("invalid") ||
-        msg.toLowerCase().includes("unrecognized");
+        !isNotYet &&
+        error.status === 400 &&
+        (msg.toLowerCase().includes("not found") ||
+          msg.toLowerCase().includes("invalid") ||
+          msg.toLowerCase().includes("unrecognized"));
       setResult({
         type: "error",
         title: isNotYet ? "Too Early" : "Scan Failed",
@@ -266,8 +289,19 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
         setUnassignedStats(
           stats.unassigned ?? { totalCandidates: 0, presentCandidates: 0 },
         );
+        setStatsError("");
       } catch (error) {
         console.error(error);
+        if (error.status === 401) {
+          setStatsError(
+            "Your scanner session has expired. Please re-enter the scanner password.",
+          );
+          onAuthExpired?.();
+        } else {
+          setStatsError(
+            error.message || "Couldn't load attendance numbers.",
+          );
+        }
       }
     }
     loadStats();
@@ -356,6 +390,8 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
           </div>
 
           <p className="scanner-slot-current">{displayedStats.label}</p>
+
+          {statsError && <p className="scanner-stats-error">{statsError}</p>}
 
           <div className="scanner-stats">
             <div>

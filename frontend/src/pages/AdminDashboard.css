@@ -1835,6 +1835,16 @@ body.drawer-open {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+.scanner-stats-error {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--admin-danger-bg);
+  border: 1px solid var(--admin-danger-line);
+  border-radius: var(--admin-r-sm);
+  color: var(--admin-danger);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
 
 .scanner-stats {
   display: grid;

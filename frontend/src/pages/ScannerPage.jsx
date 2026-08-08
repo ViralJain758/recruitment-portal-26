@@ -11,7 +11,9 @@ import { verifyScannerPassword } from "../lib/api";
 
 export default function ScannerPage() {
   const navigate = useNavigate();
-  const isAdmin = localStorage.getItem("isAdmin") === "true";
+  const [isAdmin, setIsAdmin] = useState(
+    () => localStorage.getItem("isAdmin") === "true",
+  );
   const [password, setPassword] = useState("");
   const [verified, setVerified] = useState(isAdmin);
   const [error, setError] = useState("");
@@ -34,6 +36,20 @@ export default function ScannerPage() {
       }
     };
   }, []);
+
+  // Called when the scanner backend rejects our session (e.g. an expired or
+  // stale "admin" cookie behind a locally-remembered isAdmin flag, or an
+  // expired scanner password session). Trusting a client-only flag forever
+  // is what let the scanner silently fail — drop it and ask for the
+  // password again instead of pretending everything is fine.
+  function handleAuthExpired() {
+    localStorage.removeItem("isAdmin");
+    setIsAdmin(false);
+    setVerified(false);
+    setError(
+      "Your scanner session has expired. Please re-enter the scanner password.",
+    );
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -58,6 +74,7 @@ export default function ScannerPage() {
     return (
       <AttendanceScanner
         adminBypass={isAdmin}
+        onAuthExpired={handleAuthExpired}
         onClose={isAdmin ? () => navigate("/admin-dashboard") : undefined}
       />
     );
