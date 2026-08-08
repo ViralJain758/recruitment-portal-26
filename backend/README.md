@@ -1,6 +1,6 @@
 # Recruitment Portal Backend
 
-The backend is an Express service that exposes the portal API, manages Socket.IO connections, initializes database structures, sends OTP email, and runs the Redis/BullMQ quiz submission worker.
+The backend is an Express service that exposes the portal API, manages Socket.IO connections, initializes database structures lazily (`initSchemaIfNeeded`), sends OTP email, and processes candidate quiz submissions via Upstash QStash (Serverless) or BullMQ (Node host).
 
 ## Setup and commands
 
@@ -26,7 +26,8 @@ Start with `.env.example`. Do not place secrets in source code or commit `.env`.
 | --- | --- | --- |
 | Runtime | `NODE_ENV`, `PORT`, `CLIENT_ORIGIN`, `LOG_LEVEL` | Configure the process and allowed browser origin. |
 | Database | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Primary portal database. |
-| Queue | `REDIS_URL`, `QUIZ_SUBMIT_CONCURRENCY` | Redis and worker parallelism. |
+| Serverless Queue | `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`, `APP_BASE_URL` | Upstash QStash cloud queue configuration for Vercel. |
+| Node Queue | `REDIS_URL`, `QUIZ_SUBMIT_CONCURRENCY` | Redis and worker parallelism (for standalone Node host). |
 | Security | `JWT_SECRET`, `JWT_REFRESH_SECRET`, `OTP_SECRET` | Use long, unique production secrets. |
 | Admin | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_OTP_EMAIL` | Initial administrator configuration. |
 | Scanner | `SCANNER_PASSWORD` | Protects scanner access. |
@@ -38,41 +39,35 @@ Start with `.env.example`. Do not place secrets in source code or commit `.env`.
 | --- | --- |
 | `/api/auth` | Candidate and admin authentication, token refresh, password reset, profile details, current session. |
 | `/api/otp` | OTP send, verification, and verification status. |
-| `/api/quiz` | Quiz questions and candidate quiz submission. |
+| `/api/quiz/questions` | Fetch questions and slot configuration. |
+| `/api/quiz/submit` | Candidate quiz submission (QStash queue / direct DB fallback). |
+| `/api/quiz/process-webhook` | QStash webhook endpoint for async queue processing. |
 | `/api/admin` | Candidates, attendance, registration controls, slots, schedules, and quiz administration. |
-| `/dashboard` | Dashboard-related data. |
 
-Routes that process candidate data require authentication and apply request validation and protection middleware.
+## Serverless & Webhook Architecture
 
-## Quiz submission worker
-
-`POST /api/quiz/submit` validates the candidate and queues a BullMQ job in Redis. It responds with `202 Accepted` when the queue receives the job. The worker writes the submission to Turso/libSQL asynchronously.
-
-Jobs use a stable candidate-based job ID, so repeated submits do not create duplicate submissions. This keeps the quiz endpoint responsive during bursts while preserving at-most-one durable result per candidate.
-
-`QUIZ_SUBMIT_CONCURRENCY=50` is the current starting point for the 1,500-candidate benchmark. Tune it only with a real database and Redis measurement; a higher number can shift the bottleneck from the API to database writes.
+- **Entrypoint**: `api/index.js` wraps Express for Vercel Node.js Serverless runtime.
+- **Lazy Schema**: `initSchemaIfNeeded()` caches the schema promise so cold starts complete in under 300ms.
+- **QStash Webhook**: `POST /api/quiz/submit` publishes answers to QStash in ~20ms and responds with `202 Accepted`. QStash calls `POST /api/quiz/process-webhook` with rawBody signature verification.
 
 ## Load-test utilities
 
-The scripts in `scripts/load/` support a disposable local or staging test:
+The scripts in `scripts/load/` support high-concurrency performance testing:
 
 | Script | Purpose |
 | --- | --- |
-| `clear-quiz-load-queue.mjs` | Removes pending load-test queue work. |
-| `seed-quiz-load-test.mjs` | Creates the requested dummy candidates and records their test credentials. |
-| `quiz-submit-batched.k6.js` | Sends submissions in controlled waves, 50 at once by default. |
-| `quiz-submit-instant.k6.js` | Starts all submissions immediately to test the connection and API burst limit. |
-| `quiz-load-status.mjs` | Reports queue, submission, and database completion state. |
+| `seed-quiz-load-test.mjs` | Creates requested dummy candidates and outputs access tokens (`quiz-load-users.json`). |
+| `run-load-test.mjs` | Executes worker pool load test firing simultaneous submissions (supports 2,500 to 5,000+ candidates). |
+| `test-websocket.mjs` | Health check script for Socket.IO authentication and `slot:refresh` events. |
 
-Read [docs/LOAD_TESTING.md](/D:/Projects/MERN/recruitment-portal-26/docs/LOAD_TESTING.md) before running these scripts. The bypass token exists only for isolated testing and must never be exposed in a public or production client.
+Read [docs/LOAD_TESTING.md](../docs/LOAD_TESTING.md) before running load scripts.
 
 ## Production checklist
 
 - Set `NODE_ENV=production` and a precise `CLIENT_ORIGIN`.
-- Use managed, authenticated TLS connections for Turso and Redis.
+- Add `QSTASH_TOKEN` and `APP_BASE_URL` in Vercel environment variables.
 - Provide unique, high-entropy secrets for JWT and OTP signing.
 - Configure SMTP and a valid sender address.
-- Run a single backend release with its queue worker enabled, then confirm Redis connectivity before allowing an exam window.
-- Monitor HTTP errors, queue depth, failed jobs, and database write latency.
+- Monitor HTTP errors, webhook delivery in Upstash console, and database write latency.
 
-More deployment hardening guidance is in [DEPLOYMENT_SECURITY.md](/D:/Projects/MERN/recruitment-portal-26/backend/DEPLOYMENT_SECURITY.md).
+More deployment hardening guidance is in [DEPLOYMENT_SECURITY.md](DEPLOYMENT_SECURITY.md).
