@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import "../App.css";
@@ -16,6 +16,24 @@ export default function ScannerPage() {
   const [verified, setVerified] = useState(isAdmin);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // The scanner reuses the admin design tokens (--admin-*), which are only
+  // defined under body.admin-light-mode, and it's built to be viewed against
+  // a light surface. Force that theme while this page is mounted so the
+  // scanner renders correctly even if the visitor has the public site's
+  // dark mode enabled, restoring whatever theme was active on unmount.
+  useEffect(() => {
+    const hadDarkTheme = document.documentElement.classList.contains("dark");
+    document.documentElement.classList.remove("dark");
+    document.body.classList.add("admin-light-mode");
+
+    return () => {
+      document.body.classList.remove("admin-light-mode");
+      if (hadDarkTheme) {
+        document.documentElement.classList.add("dark");
+      }
+    };
+  }, []);
 
   async function handleSubmit(event) {
     event.preventDefault();

@@ -181,15 +181,60 @@ export async function markQuizAttendance(qrToken) {
 }
 
 export async function getAttendanceStatsService() {
-  const [total, present] = await Promise.all([
-    db.execute("SELECT COUNT(*) as count FROM candidate_profiles"),
-    db.execute(
-      "SELECT COUNT(*) as count FROM candidate_quiz WHERE quiz_attended = 1",
-    ),
+  const [slotRows, unassignedRow] = await Promise.all([
+    db.execute(`
+      SELECT
+        s.id AS slot_id, s.slot_day, s.slot_number, s.slot_venue,
+        d.slot_date, t.start_time,
+        COUNT(cs.candidate_id) AS total,
+        SUM(CASE WHEN cq.quiz_attended = 1 THEN 1 ELSE 0 END) AS present
+      FROM slots s
+      LEFT JOIN candidate_status cs ON cs.slot_id = s.id
+      LEFT JOIN candidate_quiz   cq ON cq.candidate_id = cs.candidate_id
+      LEFT JOIN slot_day_dates    d ON d.day_number = s.slot_day
+      LEFT JOIN slot_time_schedules t ON t.slot_number = s.slot_number
+      GROUP BY s.id
+      ORDER BY s.slot_day, s.slot_number, s.slot_venue
+    `),
+    db.execute(`
+      SELECT
+        COUNT(cp.id) AS total,
+        SUM(CASE WHEN cq.quiz_attended = 1 THEN 1 ELSE 0 END) AS present
+      FROM candidate_profiles cp
+      LEFT JOIN candidate_status cs ON cs.candidate_id = cp.id
+      LEFT JOIN candidate_quiz   cq ON cq.candidate_id = cp.id
+      WHERE cs.slot_id IS NULL
+    `),
   ]);
+
+  const slots = slotRows.rows.map((row) => ({
+    slotId: row.slot_id,
+    day: row.slot_day,
+    slotNumber: row.slot_number,
+    venue: row.slot_venue,
+    date: row.slot_date ?? null,
+    startTime: row.start_time ?? null,
+    totalCandidates: Number(row.total ?? 0),
+    presentCandidates: Number(row.present ?? 0),
+  }));
+
+  const unassigned = {
+    totalCandidates: Number(unassignedRow.rows[0]?.total ?? 0),
+    presentCandidates: Number(unassignedRow.rows[0]?.present ?? 0),
+  };
+
+  const totalCandidates =
+    slots.reduce((sum, s) => sum + s.totalCandidates, 0) +
+    unassigned.totalCandidates;
+  const presentCandidates =
+    slots.reduce((sum, s) => sum + s.presentCandidates, 0) +
+    unassigned.presentCandidates;
+
   return {
-    totalCandidates: Number(total.rows[0].count),
-    presentCandidates: Number(present.rows[0].count),
+    totalCandidates,
+    presentCandidates,
+    slots,
+    unassigned,
   };
 }
 

@@ -19,13 +19,67 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
   });
 
   const [toasts, setToasts] = useState([]);
-  const [totalCandidates, setTotalCandidates] = useState(0);
-  const [presentCandidates, setPresentCandidates] = useState(0);
+  const [slotStats, setSlotStats] = useState([]);
+  const [unassignedStats, setUnassignedStats] = useState({
+    totalCandidates: 0,
+    presentCandidates: 0,
+  });
+  const [slotFilter, setSlotFilter] = useState("all");
+  const [history, setHistory] = useState([]);
+
+  function formatSlotLabel(slot) {
+    const parts = [`Day ${slot.day}`, `Slot ${slot.slotNumber}`];
+    if (slot.venue) parts.push(slot.venue);
+    return parts.join(" · ");
+  }
+
+  function bumpSlotPresent(candidate) {
+    if (!candidate?.slot_id) {
+      setUnassignedStats((cur) => ({
+        ...cur,
+        presentCandidates: cur.presentCandidates + 1,
+      }));
+      return;
+    }
+    setSlotStats((cur) =>
+      cur.map((slot) =>
+        slot.slotId === candidate.slot_id
+          ? { ...slot, presentCandidates: slot.presentCandidates + 1 }
+          : slot,
+      ),
+    );
+  }
+
+  const overallStats = {
+    totalCandidates:
+      slotStats.reduce((sum, s) => sum + s.totalCandidates, 0) +
+      unassignedStats.totalCandidates,
+    presentCandidates:
+      slotStats.reduce((sum, s) => sum + s.presentCandidates, 0) +
+      unassignedStats.presentCandidates,
+  };
+
+  const selectedSlot =
+    slotFilter === "all"
+      ? null
+      : slotFilter === "unassigned"
+        ? { label: "Unassigned", ...unassignedStats }
+        : (() => {
+            const slot = slotStats.find(
+              (s) => String(s.slotId) === slotFilter,
+            );
+            return slot ? { label: formatSlotLabel(slot), ...slot } : null;
+          })();
+
+  const displayedStats = selectedSlot ?? {
+    label: "All Slots",
+    ...overallStats,
+  };
+  const { totalCandidates, presentCandidates } = displayedStats;
   const remainingCandidates = totalCandidates - presentCandidates;
   const percentage = totalCandidates
     ? Math.round((presentCandidates / totalCandidates) * 100)
     : 0;
-  const [history, setHistory] = useState([]);
 
   async function startScanner() {
     if (isScanningRef.current) return;
@@ -126,7 +180,7 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
       } else {
         successSoundRef.current.currentTime = 0;
         successSoundRef.current.play().catch(() => {});
-        setPresentCandidates((c) => c + 1);
+        bumpSlotPresent(candidate);
         navigator.vibrate?.(200);
         setResult({
           type: "success",
@@ -208,8 +262,10 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
           adminBypass,
           scannerPassword,
         });
-        setTotalCandidates(stats.totalCandidates);
-        setPresentCandidates(stats.presentCandidates);
+        setSlotStats(stats.slots ?? []);
+        setUnassignedStats(
+          stats.unassigned ?? { totalCandidates: 0, presentCandidates: 0 },
+        );
       } catch (error) {
         console.error(error);
       }
@@ -248,7 +304,7 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
         ))}
       </div>
 
-      <div className="scanner-modal">
+      <div className={`scanner-modal${onClose ? " scanner-modal--closable" : ""}`}>
         {onClose && (
           <button
             className="scanner-close"
@@ -266,6 +322,41 @@ export default function AttendanceScanner({ adminBypass = false, onClose, scanne
         </div>
 
         <div className="scanner-sidebar">
+          <div className="filter-select-wrap scanner-slot-filter">
+            <svg
+              className="filter-select-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="4" width="18" height="17" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+            </svg>
+            <select
+              value={slotFilter}
+              onChange={(e) => setSlotFilter(e.target.value)}
+              aria-label="Filter by slot"
+            >
+              <option value="all">All Slots</option>
+              {slotStats.map((slot) => (
+                <option key={slot.slotId} value={String(slot.slotId)}>
+                  {formatSlotLabel(slot)}
+                </option>
+              ))}
+              {unassignedStats.totalCandidates > 0 && (
+                <option value="unassigned">Unassigned</option>
+              )}
+            </select>
+          </div>
+
+          <p className="scanner-slot-current">{displayedStats.label}</p>
+
           <div className="scanner-stats">
             <div>
               <strong>{totalCandidates}</strong>

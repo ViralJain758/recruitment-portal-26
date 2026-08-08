@@ -283,6 +283,10 @@ export async function markCandidateAttendance(req, res) {
           full_name: result.candidate.full_name,
           application_number: result.candidate.application_number,
           quiz_attended: result.candidate.quiz_attended,
+          slot_id: result.candidate.slot_id,
+          slot_day: result.candidate.slot_day,
+          slot_number: result.candidate.slot_number,
+          slot_venue: result.candidate.slot_venue,
         }
       : null;
 
