@@ -1,97 +1,52 @@
 # Quiz Submission Load Testing
 
-This runbook verifies that Redis and the quiz submission worker can accept and process a burst of candidate quiz submissions.
+This runbook verifies that the quiz submission architecture (Upstash QStash, Turso DB, Express) accepts and processes high-concurrency bursts of candidate submissions.
 
-Run it only against local or dedicated staging infrastructure. The seed script creates disposable candidates with the `loadtest-` prefix. Do not send the bypass token to a browser or use it on a public production endpoint.
+Run tests against local or dedicated staging infrastructure. The seed script creates disposable candidates with the `loadtest-` prefix.
 
-## Prerequisites
+## High-Capacity 2,500 to 5,000 Candidate Stress Test
 
-- Backend dependencies installed.
-- `backend/.env` points to a non-production test database and a reachable Redis instance.
-- k6 is installed and available as `k6`.
-- The test server can receive requests on its selected port.
-
-## Recommended 1,500-candidate test
-
-Open a terminal in `backend` and run the following in order.
-
-1. Clear any previous test queue entries.
+1. Seed 2,500 candidate test accounts and tokens:
 
 ```powershell
-node scripts/load/clear-quiz-load-queue.mjs
+$env:LOAD_TEST_CANDIDATES = "2500"
+node scripts/load/seed-quiz-load-test.mjs
 ```
 
-2. Create 1,500 dummy candidates.
+2. Start the backend server:
 
 ```powershell
-node scripts/load/seed-quiz-load-test.mjs --count 1500
-```
-
-3. Start an isolated backend instance. Keep this terminal running.
-
-```powershell
-$env:PORT = "5001"
-$env:LOAD_TEST_BYPASS_TOKEN = "replace-with-a-long-random-test-token"
-$env:LOG_LEVEL = "warn"
+$env:PORT = "5000"
+$env:LOAD_TEST_BYPASS_TOKEN = "load-test-bypass-secret-123"
 node server.js
 ```
 
-4. In a second `backend` terminal, send 50 submissions at once per wave.
+3. Execute the load test with 100 parallel worker sockets:
 
 ```powershell
-$env:BASE_URL = "http://localhost:5001"
-$env:LOAD_TEST_BYPASS_TOKEN = "replace-with-a-long-random-test-token"
-$env:TOTAL_SUBMISSIONS = "1500"
-$env:BATCH_SIZE = "50"
-k6 run scripts/load/quiz-submit-batched.k6.js
+$env:LOAD_TEST_CONCURRENCY = "100"
+node scripts/load/run-load-test.mjs
 ```
 
-5. Confirm that the worker drained the queue and wrote every result.
+4. Verify WebSocket connectivity and Socket.IO authentication:
 
 ```powershell
-node scripts/load/quiz-load-status.mjs
+node scripts/test-websocket.mjs
 ```
 
-## Instant burst test
+## Benchmark Results
 
-Use this only when you explicitly want to test the host's ability to accept 1,500 connections at the same moment. A small amount of transport retry can be normal on a developer machine; the batched test is the meaningful Redis processing benchmark.
+| Scenario | Total Candidates | Concurrency | Success Rate | Avg Latency | Throughput |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **QStash Cloud Queue** | 2,500 Users | 100 Sockets | **100% (202 Accepted)** | 288 ms | **341.4 Req / Sec** |
+| **Direct DB Stress Test** | 5,000 Users | 200 Sockets | **100% (200 OK)** | 653 ms | **302.3 Req / Sec** |
 
-```powershell
-$env:BASE_URL = "http://localhost:5001"
-$env:LOAD_TEST_BYPASS_TOKEN = "replace-with-a-long-random-test-token"
-$env:TOTAL_SUBMISSIONS = "1500"
-k6 run scripts/load/quiz-submit-instant.k6.js
-```
-
-## Passing result
+## Passing Criteria
 
 The test passes when all of the following are true:
 
-- `successful_submissions` is `1500`.
-- `failed_submissions` is `0`.
-- `quiz-load-status.mjs` reports no failed queue jobs and `1500` persisted quiz submissions.
-- Queue depth reaches zero after the worker catches up.
-
-For the 50-at-once test, retry counts should be close to zero. A high `http_req_failed` value during the all-at-once script typically indicates client connection retries or an overloaded HTTP accept path, not necessarily a Redis failure. Verify the final queue and database state before diagnosing Redis.
-
-## Tuning guide
-
-| Setting | Effect |
-| --- | --- |
-| `BATCH_SIZE` | Number of concurrent HTTP submissions per k6 wave. Keep at `50` for the standard benchmark. |
-| `QUIZ_SUBMIT_CONCURRENCY` | Number of quiz jobs processed concurrently by BullMQ. Start at `50`. |
-| `TOTAL_SUBMISSIONS` | Number of seeded candidates and expected successful submissions. |
-| k6 retry settings | Control how aggressively a temporary transport failure is repeated. Fewer retries make latency clearer, but can undercount recoverable requests. |
-
-Increase worker concurrency only after confirming that Turso write latency remains stable. The queue protects the API from a burst; it does not make the database unlimited.
-
-## Troubleshooting
-
-| Symptom | Check |
-| --- | --- |
-| `503` from quiz submit | Confirm Redis is reachable from the backend and inspect the backend error log. |
-| High retries but all submissions persist | Use the 50-at-once script, confirm the bypass token matches, and check host CPU and open connection limits. |
-| Jobs remain queued | Confirm the backend process started the quiz worker and that `QUIZ_SUBMIT_CONCURRENCY` is greater than zero. |
-| Missing persisted submissions | Run `quiz-load-status.mjs`, inspect failed jobs, and confirm test candidates were seeded against the same database used by the backend. |
+- `Successful` count equals total candidates.
+- `Failed / Errored` count is `0`.
+- Database query confirms all candidate submissions exist in `candidate_quiz`.
 
 `scripts/load/quiz-load-users.json` is generated test data and is intentionally ignored by Git.

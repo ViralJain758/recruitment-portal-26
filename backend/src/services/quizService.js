@@ -62,13 +62,25 @@ export async function ensureQuizQuestionsTable() {
       correct_answer_index INTEGER NOT NULL,
       display_order        INTEGER NOT NULL DEFAULT 0,
       is_active            INTEGER NOT NULL DEFAULT 1,
+      slot_day             INTEGER,
+      slot_number          INTEGER,
       created_at           TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
 
+  try {
+    await db.execute("ALTER TABLE quiz_questions ADD COLUMN slot_day INTEGER");
+  } catch {}
+  try {
+    await db.execute("ALTER TABLE quiz_questions ADD COLUMN slot_number INTEGER");
+  } catch {}
+
   await db.execute(
     "CREATE INDEX IF NOT EXISTS idx_quiz_questions_active_order ON quiz_questions(is_active, display_order, id)",
+  );
+  await db.execute(
+    "CREATE INDEX IF NOT EXISTS idx_quiz_questions_slot ON quiz_questions(slot_day, slot_number, is_active)",
   );
 
   await db.execute(`
@@ -121,7 +133,7 @@ async function getCandidateSlotGroup(userId) {
 
 async function fetchPaperQuestionRows(paperId) {
   const result = await db.execute({
-    sql: `SELECT q.id, q.external_id, q.section, q.question_text, q.image_url, q.options_json, q.correct_answer_index
+    sql: `SELECT q.id, q.external_id, q.section, q.question_text, q.image_url, q.options_json, q.correct_answer_index, q.slot_day, q.slot_number
           FROM quiz_paper_questions pq
           JOIN quiz_questions q ON q.id = pq.question_id
           WHERE pq.paper_id = ?
@@ -160,13 +172,33 @@ async function ensureQuizPaper(slot) {
   const existingRows = await fetchPaperQuestionRows(paper.id);
   if (existingRows.length > 0) return existingRows;
 
-  const activeResult = await db.execute({
-    sql: `SELECT id
-          FROM quiz_questions
-          WHERE is_active = 1
-          ORDER BY display_order ASC, id ASC`,
-    args: [],
-  });
+  const slotDay = slot.slot_day != null ? Number(slot.slot_day) : null;
+  const slotNumber = slot.slot_number != null ? Number(slot.slot_number) : null;
+
+  let activeResult;
+  if (slotDay != null && slotNumber != null) {
+    activeResult = await db.execute({
+      sql: `SELECT id
+            FROM quiz_questions
+            WHERE is_active = 1
+              AND (
+                (slot_day = ? AND slot_number = ?)
+                OR (slot_day IS NULL AND slot_number IS NULL)
+              )
+            ORDER BY
+              CASE WHEN slot_day IS NOT NULL AND slot_number IS NOT NULL THEN 0 ELSE 1 END ASC,
+              display_order ASC, id ASC`,
+      args: [slotDay, slotNumber],
+    });
+  } else {
+    activeResult = await db.execute({
+      sql: `SELECT id
+            FROM quiz_questions
+            WHERE is_active = 1
+            ORDER BY display_order ASC, id ASC`,
+      args: [],
+    });
+  }
 
   const activeQuestions = activeResult.rows;
   if (activeQuestions.length === 0) {
@@ -408,11 +440,14 @@ function normalizeQuestionInput(question, index) {
     throw new Error(`Question ${index + 1} has an invalid correct answer index.`);
   }
 
+  const slotDay = question.slot_day != null && question.slot_day !== "" ? Number(question.slot_day) : (question.slotDay != null && question.slotDay !== "" ? Number(question.slotDay) : null);
+  const slotNumber = question.slot_number != null && question.slot_number !== "" ? Number(question.slot_number) : (question.slotNumber != null && question.slotNumber !== "" ? Number(question.slotNumber) : null);
+
   return {
     externalId:
       question.external_id ||
       question.externalId ||
-      `question-${Date.now()}-${index + 1}`,
+      `question-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     section: question.section || "General",
     questionText: question.question_text || question.text,
     imageUrl: question.image_url || question.imageUrl || null,
@@ -420,22 +455,120 @@ function normalizeQuestionInput(question, index) {
     correctAnswerIndex,
     displayOrder: Number.isInteger(displayOrder) ? displayOrder : index + 1,
     isActive: parseActiveFlag(question.is_active ?? question.isActive),
+    slotDay: Number.isInteger(slotDay) ? slotDay : null,
+    slotNumber: Number.isInteger(slotNumber) ? slotNumber : null,
   };
 }
 
-export async function listQuizQuestionBank() {
+export async function listQuizQuestionBank(filters = {}) {
+  const { slot_day, slot_number } = filters;
+  const whereClauses = [];
+  const args = [];
+
+  if (slot_day !== undefined && slot_day !== null && slot_day !== "") {
+    whereClauses.push("slot_day = ?");
+    args.push(Number(slot_day));
+  }
+
+  if (slot_number !== undefined && slot_number !== null && slot_number !== "") {
+    whereClauses.push("slot_number = ?");
+    args.push(Number(slot_number));
+  }
+
+  const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
   const result = await db.execute({
     sql: `SELECT id, external_id, section, question_text, image_url, options_json,
-                 correct_answer_index, display_order, is_active, created_at, updated_at
+                 correct_answer_index, display_order, is_active, slot_day, slot_number,
+                 created_at, updated_at
           FROM quiz_questions
-          ORDER BY display_order ASC, id ASC`,
-    args: [],
+          ${whereSql}
+          ORDER BY slot_day ASC, slot_number ASC, display_order ASC, id ASC`,
+    args,
   });
 
   return result.rows.map((row) => ({
     ...row,
     options: JSON.parse(row.options_json),
   }));
+}
+
+export async function createQuizQuestion(questionData) {
+  const normalized = normalizeQuestionInput(questionData, 0);
+
+  const result = await db.execute({
+    sql: `INSERT INTO quiz_questions
+          (external_id, section, question_text, image_url, options_json, correct_answer_index, display_order, is_active, slot_day, slot_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      normalized.externalId,
+      normalized.section,
+      normalized.questionText,
+      normalized.imageUrl,
+      normalized.optionsJson,
+      normalized.correctAnswerIndex,
+      normalized.displayOrder,
+      normalized.isActive,
+      normalized.slotDay,
+      normalized.slotNumber,
+    ],
+  });
+
+  await db.execute("DELETE FROM quiz_paper_questions");
+  await db.execute("DELETE FROM quiz_papers");
+
+  const createdId = Number(result.lastInsertRowid);
+  const rows = await listQuizQuestionBank();
+  return rows.find((q) => q.id === createdId) || rows[0];
+}
+
+export async function updateQuizQuestion(id, questionData) {
+  const normalized = normalizeQuestionInput(questionData, 0);
+
+  await db.execute({
+    sql: `UPDATE quiz_questions
+          SET section = ?,
+              question_text = ?,
+              image_url = ?,
+              options_json = ?,
+              correct_answer_index = ?,
+              display_order = ?,
+              is_active = ?,
+              slot_day = ?,
+              slot_number = ?,
+              updated_at = datetime('now')
+          WHERE id = ?`,
+    args: [
+      normalized.section,
+      normalized.questionText,
+      normalized.imageUrl,
+      normalized.optionsJson,
+      normalized.correctAnswerIndex,
+      normalized.displayOrder,
+      normalized.isActive,
+      normalized.slotDay,
+      normalized.slotNumber,
+      id,
+    ],
+  });
+
+  await db.execute("DELETE FROM quiz_paper_questions");
+  await db.execute("DELETE FROM quiz_papers");
+
+  const rows = await listQuizQuestionBank();
+  return rows.find((q) => q.id === Number(id));
+}
+
+export async function deleteQuizQuestion(id) {
+  await db.execute({
+    sql: `DELETE FROM quiz_questions WHERE id = ?`,
+    args: [id],
+  });
+
+  await db.execute("DELETE FROM quiz_paper_questions");
+  await db.execute("DELETE FROM quiz_papers");
+
+  return { success: true, deletedId: Number(id) };
 }
 
 export async function upsertQuizQuestionBank(questions) {
@@ -448,8 +581,8 @@ export async function upsertQuizQuestionBank(questions) {
   await db.batch(
     rows.map((question) => ({
       sql: `INSERT INTO quiz_questions
-            (external_id, section, question_text, image_url, options_json, correct_answer_index, display_order, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (external_id, section, question_text, image_url, options_json, correct_answer_index, display_order, is_active, slot_day, slot_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(external_id) DO UPDATE SET
               section = excluded.section,
               question_text = excluded.question_text,
@@ -458,6 +591,8 @@ export async function upsertQuizQuestionBank(questions) {
               correct_answer_index = excluded.correct_answer_index,
               display_order = excluded.display_order,
               is_active = excluded.is_active,
+              slot_day = excluded.slot_day,
+              slot_number = excluded.slot_number,
               updated_at = datetime('now')`,
       args: [
         question.externalId,
@@ -468,6 +603,8 @@ export async function upsertQuizQuestionBank(questions) {
         question.correctAnswerIndex,
         question.displayOrder,
         question.isActive,
+        question.slotDay,
+        question.slotNumber,
       ],
     })),
     "write",

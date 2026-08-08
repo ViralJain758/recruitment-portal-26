@@ -217,7 +217,14 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: "10kb" }));
+app.use(
+  express.json({
+    limit: "50kb",
+    verify: (req, _res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  }),
+);
 app.use(cookieParser());
 app.use(hpp());
 app.use(

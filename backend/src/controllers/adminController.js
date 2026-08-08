@@ -30,6 +30,9 @@ import { bearerToken, userFromToken } from "../services/authService.js";
 import {
   listQuizQuestionBank,
   upsertQuizQuestionBank,
+  createQuizQuestion,
+  updateQuizQuestion,
+  deleteQuizQuestion,
 } from "../services/quizService.js";
 import db from "../config/db.js";
 import {
@@ -779,7 +782,8 @@ export async function removeSlotHandler(req, res) {
 
 export async function getQuizQuestionBankHandler(req, res) {
   try {
-    const questions = await listQuizQuestionBank();
+    const { slot_day, slot_number } = req.query;
+    const questions = await listQuizQuestionBank({ slot_day, slot_number });
     return res.json({ questions });
   } catch (error) {
     (req.log || logger).error("API error", {
@@ -789,6 +793,48 @@ export async function getQuizQuestionBankHandler(req, res) {
     return res
       .status(500)
       .json({ message: error.message || "Failed to fetch quiz questions." });
+  }
+}
+
+export async function createQuizQuestionHandler(req, res) {
+  try {
+    const question = await createQuizQuestion(req.body);
+    req.app.get("io")?.to("admin").emit("quiz:questions_updated", { action: "create", id: question.id });
+    return res.status(201).json({ message: "Quiz question created.", question });
+  } catch (error) {
+    (req.log || logger).error("API error", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res.status(400).json({ message: error.message || "Failed to create quiz question." });
+  }
+}
+
+export async function updateQuizQuestionHandler(req, res) {
+  try {
+    const question = await updateQuizQuestion(req.params.id, req.body);
+    req.app.get("io")?.to("admin").emit("quiz:questions_updated", { action: "update", id: req.params.id });
+    return res.json({ message: "Quiz question updated.", question });
+  } catch (error) {
+    (req.log || logger).error("API error", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res.status(400).json({ message: error.message || "Failed to update quiz question." });
+  }
+}
+
+export async function deleteQuizQuestionHandler(req, res) {
+  try {
+    const result = await deleteQuizQuestion(req.params.id);
+    req.app.get("io")?.to("admin").emit("quiz:questions_updated", { action: "delete", id: req.params.id });
+    return res.json({ message: "Quiz question deleted.", ...result });
+  } catch (error) {
+    (req.log || logger).error("API error", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res.status(500).json({ message: error.message || "Failed to delete quiz question." });
   }
 }
 
