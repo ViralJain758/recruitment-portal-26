@@ -18,34 +18,34 @@ export const QUIZ_SUBMIT_QUEUE_NAME = "quiz-submit";
 //   2. Automatic retries: a job that fails because of a transient DB/network
 //      blip is retried with backoff instead of the candidate just seeing a
 //      failed submission.
-export const quizSubmitQueue = new Queue(QUIZ_SUBMIT_QUEUE_NAME, {
-  connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 5,
-    backoff: {
-      type: "exponential",
-      delay: 500,
-    },
-    // Jobs are small (a userId + a responses object) and submissions are
-    // rare-but-bursty, so keeping a short history is enough to debug a bad
-    // run without letting Redis memory grow unbounded.
-    removeOnComplete: { count: 1000, age: 24 * 60 * 60 },
-    removeOnFail: { count: 1000, age: 7 * 24 * 60 * 60 },
-  },
-});
+export const quizSubmitQueue = redisConnection
+  ? new Queue(QUIZ_SUBMIT_QUEUE_NAME, {
+      connection: redisConnection,
+      defaultJobOptions: {
+        attempts: 5,
+        backoff: {
+          type: "exponential",
+          delay: 500,
+        },
+        removeOnComplete: { count: 1000, age: 24 * 60 * 60 },
+        removeOnFail: { count: 1000, age: 7 * 24 * 60 * 60 },
+      },
+    })
+  : null;
 
-// During a same-second slot submission burst, many HTTP handlers can be
-// waiting on the same Queue instance. BullMQ is fine with that, but Node's
-// default EventEmitter listener warning is tuned for smaller fan-outs.
-quizSubmitQueue.setMaxListeners(0);
+if (quizSubmitQueue) {
+  quizSubmitQueue.setMaxListeners(0);
+}
 
-// Dedicated connection for listening to job completion/failure events —
-// BullMQ requires QueueEvents to have its own connection separate from the
-// Queue/Worker ones since it blocks on a Redis stream.
-export const quizSubmitQueueEvents = new QueueEvents(QUIZ_SUBMIT_QUEUE_NAME, {
-  connection: redisConnection.duplicate(),
-});
-quizSubmitQueueEvents.setMaxListeners(0);
+export const quizSubmitQueueEvents = redisConnection
+  ? new QueueEvents(QUIZ_SUBMIT_QUEUE_NAME, {
+      connection: redisConnection.duplicate(),
+    })
+  : null;
+
+if (quizSubmitQueueEvents) {
+  quizSubmitQueueEvents.setMaxListeners(0);
+}
 
 // One job per candidate at a time: if a duplicate request lands while an
 // earlier one for the same candidate is still queued/active (double-clicked

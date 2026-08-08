@@ -291,14 +291,15 @@ export async function submitQuizForUser(userId, responses = {}) {
   });
 
   await db.execute({
-    sql: `UPDATE candidate_quiz
-          SET quiz_attended = 1,
-              quiz_score = ?,
-              quiz_submitted_at = ?,
-              quiz_attempt_count = COALESCE(quiz_attempt_count, 0) + 1,
-              updated_at = datetime('now')
-          WHERE candidate_id = ?`,
-    args: [score, new Date().toISOString(), candidateId],
+    sql: `INSERT INTO candidate_quiz (candidate_id, quiz_attended, quiz_score, quiz_submitted_at, quiz_attempt_count, updated_at)
+          VALUES (?, 1, ?, ?, 1, datetime('now'))
+          ON CONFLICT(candidate_id) DO UPDATE SET
+            quiz_attended = 1,
+            quiz_score = excluded.quiz_score,
+            quiz_submitted_at = excluded.quiz_submitted_at,
+            quiz_attempt_count = COALESCE(candidate_quiz.quiz_attempt_count, 0) + 1,
+            updated_at = datetime('now')`,
+    args: [candidateId, score, new Date().toISOString()],
   });
 
   return {
