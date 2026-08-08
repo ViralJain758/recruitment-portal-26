@@ -5,14 +5,16 @@ import db from "../../src/config/db.js";
 
 const tokensFile = path.resolve("scripts/load/quiz-load-users.json");
 const targetUrl = process.env.LOAD_TEST_TARGET_URL || "http://localhost:5000/api/quiz/submit";
+const CONCURRENCY_LIMIT = Number.parseInt(process.env.LOAD_TEST_CONCURRENCY || "100", 10);
 
 async function run() {
-  console.log("Starting Load Test Execution...");
+  console.log("Starting High-Capacity Load Test Execution...");
 
   const fileContent = await fs.readFile(tokensFile, "utf8");
   const candidates = JSON.parse(fileContent);
 
   console.log(`Loaded ${candidates.length} candidate user tokens for test.`);
+  console.log(`Setting Client Worker Concurrency Pool to: ${CONCURRENCY_LIMIT} parallel sockets.`);
 
   const sampleResponses = {
     "load-test-question-1": 0,
@@ -20,12 +22,10 @@ async function run() {
     "load-test-question-3": 0,
   };
 
-  const results = [];
+  const responses = [];
   const startTime = Date.now();
 
-  console.log(`Firing ${candidates.length} SIMULTANEOUS requests to ${targetUrl}...`);
-
-  const requests = candidates.map(async (candidate, index) => {
+  async function sendSubmission(candidate, index) {
     const reqStart = Date.now();
     try {
       const res = await fetch(targetUrl, {
@@ -61,9 +61,25 @@ async function run() {
         ok: false,
       };
     }
-  });
+  }
 
-  const responses = await Promise.all(requests);
+  // Pool worker implementation
+  let queueIndex = 0;
+  async function worker() {
+    while (queueIndex < candidates.length) {
+      const currentIndex = queueIndex++;
+      const candidate = candidates[currentIndex];
+      if (!candidate) break;
+      const res = await sendSubmission(candidate, currentIndex);
+      responses.push(res);
+    }
+  }
+
+  console.log(`Firing ${candidates.length} requests through ${CONCURRENCY_LIMIT} parallel workers...`);
+
+  const workers = Array.from({ length: CONCURRENCY_LIMIT }, () => worker());
+  await Promise.all(workers);
+
   const totalTime = Date.now() - startTime;
 
   // Analysis
@@ -86,13 +102,16 @@ async function run() {
   const p50 = durations[Math.floor(durations.length * 0.5)];
   const p95 = durations[Math.floor(durations.length * 0.95)];
   const p99 = durations[Math.floor(durations.length * 0.99)];
+  const rps = (candidates.length / (totalTime / 1000)).toFixed(1);
 
   console.log("\n==========================================");
-  console.log("          LOAD TEST RESULTS SUMMARY       ");
+  console.log("      2,500 USER LOAD TEST RESULTS        ");
   console.log("==========================================");
-  console.log(`Total Requests Sent : ${candidates.length}`);
-  console.log(`Total Elapsed Time   : ${totalTime} ms`);
-  console.log(`Successful (200/202): ${successCount}`);
+  console.log(`Total Candidates    : ${candidates.length}`);
+  console.log(`Parallel Workers    : ${CONCURRENCY_LIMIT}`);
+  console.log(`Total Elapsed Time  : ${totalTime} ms (${(totalTime / 1000).toFixed(2)}s)`);
+  console.log(`Throughput          : ${rps} Requests / Second`);
+  console.log(`Successful (200/202): ${successCount} / ${candidates.length}`);
   console.log(`Queued to QStash    : ${queuedCount}`);
   console.log(`Failed / Errored    : ${errorCount}`);
   console.log("------------------------------------------");
@@ -105,7 +124,7 @@ async function run() {
     console.log(`Sample Error Message: "${firstError.message || firstError.error}"`);
   }
   console.log("------------------------------------------");
-  console.log("Latency Stats:");
+  console.log("Latency Stats (Per Request):");
   console.log(`  Min Latency : ${min} ms`);
   console.log(`  Avg Latency : ${avg} ms`);
   console.log(`  p50 Latency : ${p50} ms`);
