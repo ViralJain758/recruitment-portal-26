@@ -189,15 +189,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// Redirect any plain-HTTP request to HTTPS before anything else runs.
-app.use(httpsEnforce);
-
-// Assigns a request id and logs every request/response (method, path,
-// status, latency, ip, user agent) — this is the base layer that "API
-// errors" and "unusual traffic" logging build on. It must run early so the
-// request id is available to every downstream handler and error logger.
-app.use(requestLogger);
-
+// Enable CORS first so OPTIONS preflight requests receive immediate CORS headers
 app.use(
   cors({
     origin(origin, callback) {
@@ -212,6 +204,12 @@ app.use(
     credentials: true,
   }),
 );
+
+// Redirect any plain-HTTP request to HTTPS before anything else runs.
+app.use(httpsEnforce);
+
+// Assigns a request id and logs every request/response
+app.use(requestLogger);
 app.use(
   express.json({
     limit: "50kb",
