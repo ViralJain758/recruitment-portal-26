@@ -52,11 +52,20 @@ export async function submitQuiz(req, res) {
 
     // 1. Upstash QStash Serverless Queueing (Recommended for Vercel / Edge)
     if (qstashClient) {
-      const rawHost = process.env.APP_BASE_URL || process.env.VERCEL_URL || req.get("host") || "";
-      const hostClean = rawHost.replace(/\/$/, "");
-      const targetUrl = hostClean.startsWith("http")
-        ? `${hostClean}/api/quiz/process-webhook`
-        : `https://${hostClean}/api/quiz/process-webhook`;
+      const canonicalHost = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
+      let targetUrl = "";
+      if (canonicalHost) {
+        targetUrl = canonicalHost.startsWith("http")
+          ? `${canonicalHost}/api/quiz/process-webhook`
+          : `https://${canonicalHost}/api/quiz/process-webhook`;
+      } else {
+        const reqHost = (process.env.VERCEL_URL || req.get("host") || "").replace(/\/$/, "");
+        targetUrl = reqHost.startsWith("http")
+          ? `${reqHost}/api/quiz/process-webhook`
+          : `https://${reqHost}/api/quiz/process-webhook`;
+      }
+
+      logger.info("Publishing quiz submission to QStash", { userId: user.id, targetUrl });
 
       const qstashRes = await qstashClient.publishJSON({
         url: targetUrl,
@@ -105,29 +114,47 @@ export async function processQuizWebhook(req, res) {
   try {
     if (qstashReceiver) {
       const signature = req.headers["upstash-signature"];
-      const bodyText = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+      const rawBody = req.rawBody || (typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}));
+
       const isValid = await qstashReceiver
         .verify({
           signature,
-          body: bodyText,
+          body: rawBody,
         })
-        .catch(() => false);
+        .catch((err) => {
+          logger.warn("QStash signature verification exception", { error: err.message });
+          return false;
+        });
 
       if (!isValid) {
+        logger.warn("Rejecting webhook due to invalid QStash signature", {
+          path: req.originalUrl,
+          hasSignature: Boolean(signature),
+        });
         return res.status(401).json({ message: "Invalid QStash signature" });
       }
     }
 
-    const { userId, responses } = req.body || {};
+    const payload = req.body && typeof req.body === "object" ? req.body : JSON.parse(req.rawBody || "{}");
+    const { userId, responses } = payload || {};
+
     if (!userId) {
+      logger.warn("QStash webhook payload missing userId", { payload });
       return res.status(400).json({ message: "userId is required" });
     }
 
+    logger.info("Processing quiz submission from QStash webhook", { userId });
     const result = await submitQuizForUser(userId, responses);
+    logger.info("Successfully processed quiz submission to database via QStash", {
+      userId,
+      score: result.score,
+    });
+
     return res.status(200).json({ success: true, result });
   } catch (error) {
     (req.log || logger).error("Webhook error processing quiz submission", {
       error: error.message,
+      stack: error.stack,
     });
 
     if (/already|submitted/i.test(error.message || "")) {
