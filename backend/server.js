@@ -24,7 +24,10 @@ import validateEnv from "./src/config/validateEnv.js";
 import httpsEnforce from "./src/middleware/httpsEnforce.js";
 import requestLogger from "./src/middleware/requestLogger.js";
 import { logRateLimitExceeded } from "./src/middleware/securityEvents.js";
-import { burstLimiter } from "./src/middleware/rateLimiters.js";
+import { burstLimiter, isLoadTestBypassRequest } from "./src/middleware/rateLimiters.js";
+import redisConnection from "./src/config/redis.js";
+import { quizSubmitQueue, quizSubmitQueueEvents } from "./src/queues/quizSubmitQueue.js";
+import { quizSubmitWorker } from "./src/workers/quizSubmitWorker.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
@@ -237,6 +240,7 @@ app.use(
     limit: 100,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: isLoadTestBypassRequest,
     handler: (req, res, _next, options) => {
       logRateLimitExceeded(req, "global");
       res.status(options.statusCode).json(options.message);
@@ -605,11 +609,36 @@ await ensureSlotActivationColumn();
 await ensureEmailVerificationsTable();
 await ensureQuizQuestionsTable();
 
-httpServer.listen(port, () => {
+httpServer.listen(port, 2048, () => {
   logger.info("Server started", {
     port,
     environment: process.env.NODE_ENV || "development",
   });
+  logger.info("Quiz submit worker started", {
+    concurrency: process.env.QUIZ_SUBMIT_CONCURRENCY || "50",
+  });
 });
+
+// Drain in-flight quiz submissions and close Redis connections cleanly on
+// shutdown instead of dropping jobs mid-write. `worker.close()` waits for
+// whatever the worker is currently processing to finish first.
+async function shutdown(signal) {
+  logger.info("Shutting down", { signal });
+  try {
+    await quizSubmitWorker.close();
+    await quizSubmitQueueEvents.close();
+    await quizSubmitQueue.close();
+    await redisConnection.quit();
+  } catch (error) {
+    logger.error("Error during shutdown", { error: error.message });
+  } finally {
+    httpServer.close(() => process.exit(0));
+    // Force-exit if connections (sockets, etc.) don't close in time.
+    setTimeout(() => process.exit(0), 10000).unref();
+  }
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 export default app;

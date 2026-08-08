@@ -11,6 +11,7 @@ import {
   signIn,
   signAdminSession,
   refreshSession,
+  verifyAccessTokenPayload,
 } from "../models/authModel.js";
 
 import {
@@ -334,6 +335,10 @@ export async function userFromToken(token) {
   if (error || !data?.user) return null;
 
   return data.user;
+}
+
+export function userFromAccessTokenPayload(token) {
+  return verifyAccessTokenPayload(token);
 }
 
 // ─────────────────────────────────────────────
