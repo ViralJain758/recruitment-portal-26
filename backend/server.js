@@ -264,7 +264,7 @@ app.get("/health", (_req, res) => {
 
 // Handle /socket.io requests gracefully in serverless environment (Vercel)
 // so polling requests return 200 OK instead of throwing 500 FUNCTION_INVOCATION_FAILED.
-app.all("/socket.io*", (_req, res) => {
+app.all(/^\/socket\.io/, (_req, res) => {
   res.status(200).json({
     status: "serverless_fallback",
     message: "WebSockets and Socket.IO polling are active in standalone Node mode and use REST polling in serverless mode.",
