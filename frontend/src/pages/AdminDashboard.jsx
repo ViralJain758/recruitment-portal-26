@@ -155,40 +155,47 @@ export default function AdminDashboard() {
     <div className="dashboard admin-dashboard-light">
       {/* ── Header ── */}
       <header className="header">
-        <div className="header-brand">
-          <div className="header-logo">
-            <img src={mlscLogo} alt="MLSC Logo" />
-          </div>
-          <div>
-            <h1>MLSC Recruitment</h1>
-            <p className="header-subtitle">Manage &amp; review applications</p>
+        <div className="header-top">
+          <div className="header-brand">
+            <div className="header-logo">
+              <img src={mlscLogo} alt="MLSC Logo" />
+            </div>
+            <div>
+              <h1>MLSC Recruitment</h1>
+              <p className="header-subtitle">Manage &amp; review applications</p>
+            </div>
           </div>
 
-          <div style={{ display: "flex", gap: "0.5rem", marginLeft: "1.5rem" }}>
+          <nav className="tab-switch">
             <button
               type="button"
-              className={`btn ${activeTab === "candidates" ? "btn--primary" : "btn--secondary"}`}
+              className={`tab-switch-btn ${activeTab === "candidates" ? "tab-switch-btn--active" : ""}`}
               onClick={() => setActiveTab("candidates")}
-              style={{ fontWeight: "600" }}
             >
-              Candidates &amp; Slots
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              <span>Candidates &amp; Slots</span>
             </button>
 
             <button
               type="button"
-              className={`btn ${activeTab === "questions" ? "btn--primary" : "btn--secondary"}`}
+              className={`tab-switch-btn ${activeTab === "questions" ? "tab-switch-btn--active" : ""}`}
               onClick={() => setActiveTab("questions")}
-              style={{ fontWeight: "600" }}
             >
-              Quiz Questions
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+              <span>Quiz Questions</span>
             </button>
-          </div>
-        </div>
+          </nav>
 
-        <div className="header-controls">
-          <div className="search-wrap">
+          <button className="btn btn--danger-ghost header-logout" onClick={logout}>
             <svg
-              className="search-icon"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -196,151 +203,156 @@ export default function AdminDashboard() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            <input
-              type="text"
-              placeholder="Search candidates…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+            Logout
+          </button>
+        </div>
 
-          <div className="header-actions">
-            {/* ── Global Lock Toggle ── */}
-            <button
-              className={`btn ${globalLocked ? "btn--danger" : "btn--warning"}`}
-              onClick={() => toggleGlobalLock(!globalLocked)}
-              disabled={globalLockLoading}
-              title={
-                globalLocked
-                  ? "Click to unlock all registrations"
-                  : "Click to lock all registrations"
-              }
-            >
-              {globalLocked ? (
-                <>
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                  {globalLockLoading
-                    ? "Unlocking…"
-                    : "Locked (Click to Unlock)"}
-                </>
-              ) : (
-                <>
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-                  </svg>
-                  {globalLockLoading ? "Locking…" : "Lock All Forms"}
-                </>
-              )}
-            </button>
-
-            {/* ── Registration & edit deadline ── */}
-            <div className="deadline-editor">
-              <label htmlFor="registration-deadline-input">
-                Registration deadline
-              </label>
-              <input
-                id="registration-deadline-input"
-                type="datetime-local"
-                value={deadlineDraft}
-                onChange={(e) => {
-                  setDeadlineDraft(e.target.value);
-                  setDeadlineDirty(true);
-                }}
-              />
-              <button
-                type="button"
-                className="btn btn--secondary"
-                onClick={handleSaveDeadline}
-                disabled={deadlineLoading || !deadlineDraft}
-                title="Save the registration & edit deadline"
+        {activeTab === "candidates" && (
+          <div className="header-toolbar">
+            <div className="search-wrap">
+              <svg
+                className="search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                {deadlineLoading ? "Saving…" : "Save"}
-              </button>
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search candidates…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
 
-            <button
-              className="btn btn--secondary"
-              onClick={() => navigate("/scanner")}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className="header-actions">
+              {/* ── Global Lock Toggle ── */}
+              <button
+                className={`btn ${globalLocked ? "btn--danger" : "btn--warning"}`}
+                onClick={() => toggleGlobalLock(!globalLocked)}
+                disabled={globalLockLoading}
+                title={
+                  globalLocked
+                    ? "Click to unlock all registrations"
+                    : "Click to lock all registrations"
+                }
               >
-                <rect x="3" y="3" width="5" height="5" rx="1" />
-                <rect x="16" y="3" width="5" height="5" rx="1" />
-                <rect x="3" y="16" width="5" height="5" rx="1" />
-                <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
-                <path d="M21 21v.01" />
-                <path d="M12 7v3a2 2 0 0 1-2 2H7" />
-                <path d="M3 12h.01" />
-                <path d="M12 3h.01" />
-                <path d="M12 16v.01" />
-                <path d="M16 12h1" />
-              </svg>
-              Scanner
-            </button>
+                {globalLocked ? (
+                  <>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    {globalLockLoading
+                      ? "Unlocking…"
+                      : "Locked (Click to Unlock)"}
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                    </svg>
+                    {globalLockLoading ? "Locking…" : "Lock All Forms"}
+                  </>
+                )}
+              </button>
 
-            <button
-              className="btn btn--ghost"
-              onClick={fetchCandidates}
-              title="Refresh candidates"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-              Refresh
-            </button>
+              {/* ── Registration & edit deadline ── */}
+              <div className="deadline-editor">
+                <label htmlFor="registration-deadline-input">
+                  Registration deadline
+                </label>
+                <input
+                  id="registration-deadline-input"
+                  type="datetime-local"
+                  value={deadlineDraft}
+                  onChange={(e) => {
+                    setDeadlineDraft(e.target.value);
+                    setDeadlineDirty(true);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={handleSaveDeadline}
+                  disabled={deadlineLoading || !deadlineDraft}
+                  title="Save the registration & edit deadline"
+                >
+                  {deadlineLoading ? "Saving…" : "Save"}
+                </button>
+              </div>
 
-            <button className="btn btn--danger-ghost" onClick={logout}>
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <button
+                className="btn btn--secondary"
+                onClick={() => navigate("/scanner")}
               >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              Logout
-            </button>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="3" width="5" height="5" rx="1" />
+                  <rect x="16" y="3" width="5" height="5" rx="1" />
+                  <rect x="3" y="16" width="5" height="5" rx="1" />
+                  <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
+                  <path d="M21 21v.01" />
+                  <path d="M12 7v3a2 2 0 0 1-2 2H7" />
+                  <path d="M3 12h.01" />
+                  <path d="M12 3h.01" />
+                  <path d="M12 16v.01" />
+                  <path d="M16 12h1" />
+                </svg>
+                Scanner
+              </button>
+
+              <button
+                className="btn btn--ghost"
+                onClick={fetchCandidates}
+                title="Refresh candidates"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+                Refresh
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
       {activeTab === "questions" ? (

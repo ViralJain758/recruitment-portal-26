@@ -5,6 +5,7 @@ import {
   updateQuizQuestion,
   deleteQuizQuestion,
 } from "../lib/api";
+import { adminSocket } from "../lib/socket";
 
 export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
   const [questions, setQuestions] = useState([]);
@@ -31,7 +32,22 @@ export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
     options: ["", "", "", ""],
     correct_answer_index: 0,
     is_active: 1,
+    image_url: "",
   });
+  const [imageError, setImageError] = useState(null);
+  const [imagePreviewFailed, setImagePreviewFailed] = useState(false);
+
+  const handleImageUrlChange = (value) => {
+    setImageError(null);
+    setImagePreviewFailed(false);
+    setFormData((prev) => ({ ...prev, image_url: value }));
+  };
+
+  const handleRemoveImage = () => {
+    setFormData((prev) => ({ ...prev, image_url: "" }));
+    setImageError(null);
+    setImagePreviewFailed(false);
+  };
 
   const loadQuestions = useCallback(async () => {
     setLoading(true);
@@ -53,8 +69,24 @@ export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
     loadQuestions();
   }, [loadQuestions]);
 
+  // Live-refresh the question bank when another admin (or tab) adds,
+  // edits, or deletes a question, so everyone sees changes in real time.
+  useEffect(() => {
+    function handleQuestionsUpdated() {
+      loadQuestions();
+    }
+
+    adminSocket.on("quiz:questions_updated", handleQuestionsUpdated);
+
+    return () => {
+      adminSocket.off("quiz:questions_updated", handleQuestionsUpdated);
+    };
+  }, [loadQuestions]);
+
   const handleOpenAddModal = () => {
     setEditingQuestion(null);
+    setImageError(null);
+    setImagePreviewFailed(false);
     setFormData({
       question_text: "",
       section: "Technical",
@@ -63,6 +95,7 @@ export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
       options: ["", "", "", ""],
       correct_answer_index: 0,
       is_active: 1,
+      image_url: "",
     });
     setIsModalOpen(true);
   };
@@ -80,6 +113,8 @@ function getSafeOptionsArray(rawOptions) {
 
   const handleOpenEditModal = (q) => {
     setEditingQuestion(q);
+    setImageError(null);
+    setImagePreviewFailed(false);
     const rawOpts = getSafeOptionsArray(q.options || q.options_json);
     const opts = rawOpts.map((o) => (typeof o === "object" ? o.value : String(o ?? "")));
 
@@ -93,6 +128,7 @@ function getSafeOptionsArray(rawOptions) {
       options: opts,
       correct_answer_index: q.correct_answer_index ?? 0,
       is_active: q.is_active ?? 1,
+      image_url: q.image_url || q.imageUrl || "",
     });
     setIsModalOpen(true);
   };
@@ -124,6 +160,7 @@ function getSafeOptionsArray(rawOptions) {
         options: validOpts,
         correct_answer_index: Number(formData.correct_answer_index),
         is_active: Number(formData.is_active),
+        image_url: formData.image_url ? formData.image_url.trim() : null,
       };
 
       if (editingQuestion) {
@@ -163,104 +200,31 @@ function getSafeOptionsArray(rawOptions) {
   });
 
   return (
-    <div style={{ padding: "1.5rem", color: "#f8fafc" }}>
+    <div className="qm-wrap">
       {/* Header & Controls */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "1rem",
-          marginBottom: "1.5rem",
-        }}
-      >
+      <div className="qm-header">
         <div>
-          <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: "700" }}>
-            Slot-Wise Quiz Questions
-          </h2>
-          <p style={{ margin: "0.25rem 0 0", color: "#94a3b8", fontSize: "0.875rem" }}>
-            Manage slot-specific and fallback questions for candidates.
-          </p>
+          <h2>Slot-Wise Quiz Questions</h2>
+          <p>Manage slot-specific and fallback questions for candidates.</p>
         </div>
 
-        <button
-          onClick={handleOpenAddModal}
-          style={{
-            background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-            color: "#fff",
-            border: "none",
-            borderRadius: "0.5rem",
-            padding: "0.625rem 1.25rem",
-            fontWeight: "600",
-            fontSize: "0.875rem",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(79, 70, 229, 0.3)",
-          }}
-        >
+        <button className="btn btn--primary" onClick={handleOpenAddModal}>
           + Add New Question
         </button>
       </div>
 
       {/* Alerts */}
-      {error && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            borderRadius: "0.5rem",
-            backgroundColor: "rgba(239, 68, 68, 0.15)",
-            border: "1px solid rgba(239, 68, 68, 0.3)",
-            color: "#fca5a5",
-            marginBottom: "1rem",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {successMsg && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            borderRadius: "0.5rem",
-            backgroundColor: "rgba(34, 197, 94, 0.15)",
-            border: "1px solid rgba(34, 197, 94, 0.3)",
-            color: "#86efac",
-            marginBottom: "1rem",
-          }}
-        >
-          {successMsg}
-        </div>
-      )}
+      {error && <div className="qm-alert qm-alert--error">{error}</div>}
+      {successMsg && <div className="qm-alert qm-alert--success">{successMsg}</div>}
 
       {/* Filters Bar */}
-      <div
-        style={{
-          display: "flex",
-          gap: "1rem",
-          flexWrap: "wrap",
-          marginBottom: "1.5rem",
-          backgroundColor: "#1e293b",
-          padding: "1rem",
-          borderRadius: "0.75rem",
-          border: "1px solid #334155",
-        }}
-      >
-        <div style={{ flex: 1, minWidth: "200px" }}>
-          <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>
-            Filter by Day
-          </label>
+      <div className="qm-toolbar">
+        <div className="qm-field qm-field--select">
+          <label>Filter by Day</label>
           <select
+            className="qm-select"
             value={selectedDay}
             onChange={(e) => setSelectedDay(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.5rem",
-              borderRadius: "0.375rem",
-              backgroundColor: "#0f172a",
-              color: "#f8fafc",
-              border: "1px solid #334155",
-            }}
           >
             <option value="">All Days</option>
             {days.map((d) => (
@@ -271,21 +235,12 @@ function getSafeOptionsArray(rawOptions) {
           </select>
         </div>
 
-        <div style={{ flex: 1, minWidth: "200px" }}>
-          <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>
-            Filter by Time Slot
-          </label>
+        <div className="qm-field qm-field--select">
+          <label>Filter by Time Slot</label>
           <select
+            className="qm-select"
             value={selectedSlot}
             onChange={(e) => setSelectedSlot(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.5rem",
-              borderRadius: "0.375rem",
-              backgroundColor: "#0f172a",
-              color: "#f8fafc",
-              border: "1px solid #334155",
-            }}
           >
             <option value="">All Slots</option>
             {slots.map((s) => (
@@ -296,99 +251,37 @@ function getSafeOptionsArray(rawOptions) {
           </select>
         </div>
 
-        <div style={{ flex: 2, minWidth: "250px" }}>
-          <label style={{ display: "block", fontSize: "0.75rem", color: "#94a3b8", marginBottom: "0.25rem" }}>
-            Search Questions
-          </label>
+        <div className="qm-field qm-field--search">
+          <label>Search Questions</label>
           <input
             type="text"
+            className="qm-input"
             placeholder="Search by question text or section..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "0.5rem",
-              borderRadius: "0.375rem",
-              backgroundColor: "#0f172a",
-              color: "#f8fafc",
-              border: "1px solid #334155",
-            }}
           />
         </div>
       </div>
 
       {/* Questions List */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: "3rem", color: "#94a3b8" }}>
-          Loading questions...
-        </div>
+        <div className="qm-empty">Loading questions...</div>
       ) : filteredQuestions.length === 0 ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "3rem",
-            backgroundColor: "#1e293b",
-            borderRadius: "0.75rem",
-            border: "1px solid #334155",
-            color: "#94a3b8",
-          }}
-        >
-          No questions found for the selected filters.
-        </div>
+        <div className="qm-empty">No questions found for the selected filters.</div>
       ) : (
-        <div style={{ display: "grid", gap: "1rem" }}>
+        <div className="qm-list">
           {filteredQuestions.map((q, idx) => (
-            <div
-              key={q.id || idx}
-              style={{
-                backgroundColor: "#1e293b",
-                padding: "1.25rem",
-                borderRadius: "0.75rem",
-                border: "1px solid #334155",
-                position: "relative",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <div key={q.id || idx} className="qm-card">
+              <div className="qm-card-head">
+                <div className="qm-badges">
+                  <span className="qm-badge qm-badge--id">#{q.id}</span>
+                  <span className="qm-badge qm-badge--section">{q.section || "General"}</span>
                   <span
-                    style={{
-                      fontSize: "0.75rem",
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "0.25rem",
-                      backgroundColor: "#334155",
-                      color: "#e2e8f0",
-                      fontWeight: "600",
-                    }}
-                  >
-                    #{q.id}
-                  </span>
-
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "0.25rem",
-                      backgroundColor: "rgba(99, 102, 241, 0.2)",
-                      color: "#a5b4fc",
-                      fontWeight: "600",
-                    }}
-                  >
-                    {q.section || "General"}
-                  </span>
-
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "0.25rem",
-                      backgroundColor:
-                        q.slot_day != null && q.slot_number != null
-                          ? "rgba(16, 185, 129, 0.2)"
-                          : "rgba(245, 158, 11, 0.2)",
-                      color:
-                        q.slot_day != null && q.slot_number != null ? "#6ee7b7" : "#fcd34d",
-                      fontWeight: "600",
-                    }}
+                    className={`qm-badge ${
+                      q.slot_day != null && q.slot_number != null
+                        ? "qm-badge--slot"
+                        : "qm-badge--general"
+                    }`}
                   >
                     {q.slot_day != null && q.slot_number != null
                       ? `Day ${q.slot_day} - Slot ${q.slot_number}`
@@ -396,70 +289,34 @@ function getSafeOptionsArray(rawOptions) {
                   </span>
                 </div>
 
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button
-                    onClick={() => handleOpenEditModal(q)}
-                    style={{
-                      background: "#334155",
-                      color: "#f8fafc",
-                      border: "none",
-                      padding: "0.375rem 0.75rem",
-                      borderRadius: "0.375rem",
-                      fontSize: "0.75rem",
-                      cursor: "pointer",
-                      fontWeight: "600",
-                    }}
-                  >
+                <div className="qm-card-actions">
+                  <button className="qm-btn-sm qm-btn-sm--edit" onClick={() => handleOpenEditModal(q)}>
                     Edit
                   </button>
-
-                  <button
-                    onClick={() => setDeletingId(q.id)}
-                    style={{
-                      background: "rgba(239, 68, 68, 0.2)",
-                      color: "#fca5a5",
-                      border: "1px solid rgba(239, 68, 68, 0.3)",
-                      padding: "0.375rem 0.75rem",
-                      borderRadius: "0.375rem",
-                      fontSize: "0.75rem",
-                      cursor: "pointer",
-                      fontWeight: "600",
-                    }}
-                  >
+                  <button className="qm-btn-sm qm-btn-sm--delete" onClick={() => setDeletingId(q.id)}>
                     Delete
                   </button>
                 </div>
               </div>
 
-              <h4 style={{ margin: "0 0 1rem", fontSize: "1rem", fontWeight: "600", color: "#f8fafc" }}>
-                {q.question_text}
-              </h4>
+              <h4 className="qm-question-text">{q.question_text}</h4>
+
+              {(q.image_url || q.imageUrl) && (
+                <div className="qm-card-image">
+                  <img src={q.image_url || q.imageUrl} alt="Question visual" />
+                </div>
+              )}
 
               {/* Options */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.5rem" }}>
+              <div className="qm-options">
                 {getSafeOptionsArray(q.options || q.options_json).map((opt, oIdx) => {
                   const optVal = typeof opt === "object" ? opt.value : String(opt ?? "");
                   const isCorrect = oIdx === Number(q.correct_answer_index);
                   return (
-                    <div
-                      key={oIdx}
-                      style={{
-                        padding: "0.5rem 0.75rem",
-                        borderRadius: "0.375rem",
-                        backgroundColor: isCorrect ? "rgba(34, 197, 94, 0.15)" : "#0f172a",
-                        border: isCorrect ? "1px solid #22c55e" : "1px solid #1e293b",
-                        fontSize: "0.875rem",
-                        color: isCorrect ? "#86efac" : "#cbd5e1",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <span style={{ fontWeight: "700", opacity: 0.7 }}>
-                        {String.fromCharCode(65 + oIdx)}.
-                      </span>
+                    <div key={oIdx} className={`qm-option ${isCorrect ? "qm-option--correct" : ""}`}>
+                      <span className="qm-option-letter">{String.fromCharCode(65 + oIdx)}.</span>
                       <span>{optVal}</span>
-                      {isCorrect && <span style={{ marginLeft: "auto", fontWeight: "bold" }}>✓</span>}
+                      {isCorrect && <span className="qm-option-check">✓</span>}
                     </div>
                   );
                 })}
@@ -471,93 +328,75 @@ function getSafeOptionsArray(rawOptions) {
 
       {/* Add/Edit Question Modal */}
       {isModalOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.75)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000,
-            padding: "1rem",
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "0.75rem",
-              width: "100%",
-              maxWidth: "600px",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              padding: "1.5rem",
-              color: "#f8fafc",
-            }}
-          >
-            <h3 style={{ marginTop: 0, marginBottom: "1rem" }}>
-              {editingQuestion ? "Edit Question" : "Add New Question"}
-            </h3>
+        <div className="qm-modal-overlay">
+          <div className="qm-modal">
+            <h3>{editingQuestion ? "Edit Question" : "Add New Question"}</h3>
 
             <form onSubmit={handleFormSubmit}>
-              <div style={{ marginBottom: "1rem" }}>
-                <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem", color: "#94a3b8" }}>
-                  Question Text *
-                </label>
+              <div className="qm-form-group">
+                <label className="qm-field-label">Question Text *</label>
                 <textarea
                   required
                   rows={3}
+                  className="qm-textarea"
                   value={formData.question_text}
                   onChange={(e) => setFormData({ ...formData, question_text: e.target.value })}
-                  style={{
-                    width: "100%",
-                    padding: "0.625rem",
-                    borderRadius: "0.375rem",
-                    backgroundColor: "#0f172a",
-                    color: "#f8fafc",
-                    border: "1px solid #334155",
-                    fontSize: "0.875rem",
-                  }}
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+              <div className="qm-form-group">
+                <label className="qm-field-label">Question Image URL (optional)</label>
+                <input
+                  type="url"
+                  className="qm-input"
+                  placeholder="https://example.com/image.png"
+                  value={formData.image_url}
+                  onChange={(e) => handleImageUrlChange(e.target.value)}
+                />
+                <div className="qm-image-url-meta">
+                  <span className="qm-image-hint">Paste a direct link to an image hosted elsewhere.</span>
+                  {formData.image_url && (
+                    <button type="button" className="qm-image-remove" onClick={handleRemoveImage}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                {formData.image_url && !imagePreviewFailed && (
+                  <div className="qm-image-preview">
+                    <img
+                      src={formData.image_url}
+                      alt="Question preview"
+                      onError={() => setImagePreviewFailed(true)}
+                      onLoad={() => setImagePreviewFailed(false)}
+                    />
+                  </div>
+                )}
+                {formData.image_url && imagePreviewFailed && (
+                  <div className="qm-alert qm-alert--error qm-image-error">
+                    Couldn't load a preview for this URL. Double-check the link — it will still be saved as entered.
+                  </div>
+                )}
+                {imageError && <div className="qm-alert qm-alert--error qm-image-error">{imageError}</div>}
+              </div>
+
+              <div className="qm-form-row">
                 <div>
-                  <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.25rem", color: "#94a3b8" }}>
-                    Section
-                  </label>
+                  <label className="qm-field-label">Section</label>
                   <input
                     type="text"
+                    className="qm-input"
                     value={formData.section}
                     onChange={(e) => setFormData({ ...formData, section: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "0.5rem",
-                      borderRadius: "0.375rem",
-                      backgroundColor: "#0f172a",
-                      color: "#f8fafc",
-                      border: "1px solid #334155",
-                    }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.25rem", color: "#94a3b8" }}>
-                    Slot Day
-                  </label>
+                  <label className="qm-field-label">Slot Day</label>
                   <select
+                    className="qm-select"
                     value={formData.slot_day}
                     onChange={(e) => setFormData({ ...formData, slot_day: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "0.5rem",
-                      borderRadius: "0.375rem",
-                      backgroundColor: "#0f172a",
-                      color: "#f8fafc",
-                      border: "1px solid #334155",
-                    }}
                   >
                     <option value="">General (All Days)</option>
                     {days.map((d) => (
@@ -569,20 +408,11 @@ function getSafeOptionsArray(rawOptions) {
                 </div>
 
                 <div>
-                  <label style={{ display: "block", fontSize: "0.75rem", marginBottom: "0.25rem", color: "#94a3b8" }}>
-                    Slot Number
-                  </label>
+                  <label className="qm-field-label">Slot Number</label>
                   <select
+                    className="qm-select"
                     value={formData.slot_number}
                     onChange={(e) => setFormData({ ...formData, slot_number: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "0.5rem",
-                      borderRadius: "0.375rem",
-                      backgroundColor: "#0f172a",
-                      color: "#f8fafc",
-                      border: "1px solid #334155",
-                    }}
                   >
                     <option value="">General (All Slots)</option>
                     {slots.map((s) => (
@@ -595,67 +425,35 @@ function getSafeOptionsArray(rawOptions) {
               </div>
 
               {/* Options */}
-              <div style={{ marginBottom: "1rem" }}>
-                <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.5rem", color: "#94a3b8" }}>
-                  Options & Correct Answer *
-                </label>
+              <div className="qm-form-group">
+                <label className="qm-field-label">Options & Correct Answer *</label>
                 {formData.options.map((opt, idx) => (
-                  <div key={idx} style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem" }}>
+                  <div key={idx} className="qm-option-row">
                     <input
                       type="radio"
                       name="correct_answer"
                       checked={formData.correct_answer_index === idx}
                       onChange={() => setFormData({ ...formData, correct_answer_index: idx })}
                     />
-                    <span style={{ fontWeight: "700", minWidth: "1.5rem" }}>
-                      {String.fromCharCode(65 + idx)}:
-                    </span>
+                    <span className="qm-option-letter-input">{String.fromCharCode(65 + idx)}:</span>
                     <input
                       type="text"
                       required={idx < 2}
                       placeholder={`Option ${String.fromCharCode(65 + idx)}`}
                       value={opt}
                       onChange={(e) => handleOptionChange(idx, e.target.value)}
-                      style={{
-                        flex: 1,
-                        padding: "0.5rem",
-                        borderRadius: "0.375rem",
-                        backgroundColor: "#0f172a",
-                        color: "#f8fafc",
-                        border: "1px solid #334155",
-                      }}
+                      className="qm-input"
+                      style={{ flex: 1 }}
                     />
                   </div>
                 ))}
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1.5rem" }}>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "0.375rem",
-                    backgroundColor: "#334155",
-                    color: "#f8fafc",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
+              <div className="qm-modal-actions">
+                <button type="button" className="btn btn--ghost" onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  style={{
-                    padding: "0.5rem 1.25rem",
-                    borderRadius: "0.375rem",
-                    backgroundColor: "#4f46e5",
-                    color: "#fff",
-                    border: "none",
-                    fontWeight: "600",
-                    cursor: "pointer",
-                  }}
-                >
+                <button type="submit" className="btn btn--primary">
                   {editingQuestion ? "Save Changes" : "Create Question"}
                 </button>
               </div>
@@ -666,59 +464,20 @@ function getSafeOptionsArray(rawOptions) {
 
       {/* Delete Confirmation Modal */}
       {deletingId && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.75)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000,
-            padding: "1rem",
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "0.75rem",
-              width: "100%",
-              maxWidth: "400px",
-              padding: "1.5rem",
-              color: "#f8fafc",
-            }}
-          >
-            <h3 style={{ marginTop: 0, color: "#fca5a5" }}>Delete Question</h3>
-            <p style={{ color: "#cbd5e1" }}>
+        <div className="confirm-overlay">
+          <div className="confirm-dialog confirm-dialog--danger">
+            <div className="confirm-icon">⚠️</div>
+            <div className="confirm-title">Delete Question</div>
+            <p className="confirm-message">
               Are you sure you want to delete this question? This action cannot be undone.
             </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1.5rem" }}>
-              <button
-                onClick={() => setDeletingId(null)}
-                style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
-                  backgroundColor: "#334155",
-                  color: "#f8fafc",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
+            <div className="confirm-actions">
+              <button className="confirm-btn confirm-btn--cancel" onClick={() => setDeletingId(null)}>
                 Cancel
               </button>
               <button
+                className="confirm-btn confirm-btn--danger"
                 onClick={() => handleDeleteConfirm(deletingId)}
-                style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
-                  backgroundColor: "#ef4444",
-                  color: "#fff",
-                  border: "none",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                }}
               >
                 Delete Permanently
               </button>
