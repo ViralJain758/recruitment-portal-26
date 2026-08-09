@@ -5,6 +5,7 @@ import {
   updateQuizQuestion,
   deleteQuizQuestion,
 } from "../lib/api";
+import { adminSocket } from "../lib/socket";
 
 export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
   const [questions, setQuestions] = useState([]);
@@ -66,6 +67,20 @@ export function QuizQuestionsManager({ days = [1, 2, 3], slots = [1, 2, 3] }) {
 
   useEffect(() => {
     loadQuestions();
+  }, [loadQuestions]);
+
+  // Live-refresh the question bank when another admin (or tab) adds,
+  // edits, or deletes a question, so everyone sees changes in real time.
+  useEffect(() => {
+    function handleQuestionsUpdated() {
+      loadQuestions();
+    }
+
+    adminSocket.on("quiz:questions_updated", handleQuestionsUpdated);
+
+    return () => {
+      adminSocket.off("quiz:questions_updated", handleQuestionsUpdated);
+    };
   }, [loadQuestions]);
 
   const handleOpenAddModal = () => {
