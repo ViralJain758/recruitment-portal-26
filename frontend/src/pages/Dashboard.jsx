@@ -151,7 +151,7 @@ const FAQS = [
   },
   {
     q: "What should I bring for the test?",
-    a: "Bring your college ID card, laptop and any materials mentioned in the recruitment guidelines.",
+    a: "Bring your laptop and any materials mentioned in the recruitment guidelines.",
   },
   {
     q: "How will I know my selection status?",
@@ -1451,8 +1451,8 @@ export default function Dashboard({
               </div>
             </div>
             <p className="cd-slot-note">
-              Please arrive at the venue on time. Bring your college ID and show
-              the QR code above for attendance.
+              Please arrive at the venue on time. And show the QR code above for
+              attendance.
             </p>
 
             <div className="cd-card-actions">

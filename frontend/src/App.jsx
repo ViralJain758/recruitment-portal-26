@@ -95,6 +95,16 @@ function ExamAuthRoute({ authSession, candidateProfile, children }) {
 // detects the lost fullscreen/session state and shows its "Restore
 // Fullscreen" interceptor, counting it as a security warning rather than
 // silently letting the candidate walk away and start over.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
+
 function ExamInProgressGuard({ children }) {
   const { examStarted, examCompleted } = useExam();
   const location = useLocation();
@@ -127,7 +137,8 @@ export default function App() {
   return (
     <ExamProvider>
       <ExamInProgressGuard>
-      <Routes>
+        <ScrollToTop />
+        <Routes>
         <Route
           path="/"
           element={

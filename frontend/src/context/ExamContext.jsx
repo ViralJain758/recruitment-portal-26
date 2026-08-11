@@ -221,8 +221,6 @@ export const ExamProvider = ({ children }) => {
     const submissionQuestions = questionsRef.current;
 
     if (!submissionCandidate?.accessToken || submissionQuestions.length === 0) {
-      // Nothing meaningful to submit (e.g. exam ended before any questions
-      // ever loaded) — don't get stuck retrying forever.
       setSubmissionPending(false);
       return true;
     }
@@ -230,25 +228,23 @@ export const ExamProvider = ({ children }) => {
     try {
       await submitQuiz({ responses: responsesRef.current }, submissionCandidate.accessToken);
       setSubmissionPending(false);
+      setExamCompleted(true);
+      localStorage.setItem("mlsc_exam_completed", "true");
       return true;
     } catch (error) {
       if (/already|submitted/i.test(error.message || "")) {
-        // The server already has an earlier attempt on file — nothing to retry.
         setSubmissionPending(false);
+        setExamCompleted(true);
+        localStorage.setItem("mlsc_exam_completed", "true");
         return true;
       }
 
-      // A response with a status code means the request *reached* the
-      // server and it rejected it for a real reason (bad payload, auth,
-      // etc.) — retrying the same request won't change that, so don't loop
-      // on it forever. Anything else (fetch itself threw, or a 5xx) is
-      // treated as connectivity/server trouble worth retrying.
       const isRetryable = !error.status || error.status >= 500;
 
       if (!isRetryable) {
         console.error(error);
         setSubmissionPending(false);
-        return true;
+        return false;
       }
 
       setSubmissionPending(true);
@@ -256,23 +252,11 @@ export const ExamProvider = ({ children }) => {
     }
   };
 
-  // Finalizes the exam locally right away (stops the timer, kicks the
-  // candidate to the Result screen) regardless of connectivity, then tries
-  // to deliver the submission. If that first attempt fails because the
-  // candidate is offline, submissionPending flips on and the background
-  // effect below takes over — retrying automatically the moment the browser
-  // reports it's back online (and periodically in the background besides),
-  // resuming even across a page reload since submissionPending is restored
-  // from localStorage on mount.
   const completeExam = async () => {
     if (examCompleted && !submissionPending) return true;
 
-    setExamCompleted(true);
-    localStorage.setItem("mlsc_exam_completed", "true");
-
-    await attemptSubmission();
-
-    return true;
+    setSubmissionPending(true);
+    return await attemptSubmission();
   };
 
   // Background sync: as long as a submission is pending, keep trying to
