@@ -18,7 +18,7 @@ const REFRESH_COOKIE_NAME = "refreshToken";
 const ADMIN_COOKIE_NAME = "adminSession";
 const SCANNER_COOKIE_NAME = "scannerSession";
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
-const ADMIN_COOKIE_MAX_AGE = 15 * 60 * 1000;
+const ADMIN_COOKIE_MAX_AGE = 3 * 60 * 60 * 1000;
 
 function cookieOptions(maxAge) {
   return {

@@ -3,7 +3,11 @@ import {
   userFromAccessTokenPayload,
   userFromToken,
 } from "../services/authService.js";
-import { fetchQuizQuestionsForUser, submitQuizForUser } from "../services/quizService.js";
+import {
+  fetchQuizQuestionsForUser,
+  submitQuizForUser,
+  autosaveQuizAnswersForUser,
+} from "../services/quizService.js";
 import {
   quizSubmitQueue,
   quizSubmitJobId,
@@ -33,6 +37,36 @@ export async function getQuizQuestions(req, res) {
 }
 
 import { qstashClient, qstashReceiver } from "../config/qstash.js";
+
+// Lightweight, frequent, best-effort. Never lets the client's exam flow
+// stall on this: failures come back as a normal error response (so the
+// client's retry/backoff logic can decide what to do) but nothing here is
+// destructive or blocks the candidate from continuing the quiz.
+export async function autosaveQuiz(req, res) {
+  try {
+    const token = bearerToken(req);
+    let user = token ? userFromAccessTokenPayload(token) : null;
+    if (!user && token) {
+      user = await userFromToken(token);
+    }
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid or expired session.",
+      });
+    }
+
+    const { responses = {} } = req.body || {};
+    const result = await autosaveQuizAnswersForUser(user.id, responses);
+
+    return res.status(200).json({ saved: true, count: result.saved });
+  } catch (error) {
+    (req.log || logger).error("API error", { error: error.message, stack: error.stack });
+    return res.status(error.statusCode || 400).json({
+      message: error.message || "Failed to autosave answers.",
+    });
+  }
+}
 
 export async function submitQuiz(req, res) {
   try {
