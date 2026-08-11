@@ -50,6 +50,40 @@ function shuffleForCandidate(rows) {
   return shuffled;
 }
 
+function stableSeed(key) {
+  const hash = crypto.createHash("sha256").update(String(key)).digest();
+  return hash.readUInt32BE(0);
+}
+
+// Deterministically shuffles a single question's options for a given
+// candidate. Deterministic (rather than Math.random, like shuffleForCandidate
+// above) on purpose: the candidate fetches questions once and answers by
+// option index, then submits those indices later — scoring re-derives the
+// canonical question set server-side from scratch, so it must land on the
+// exact same option order for the exact same candidate+question, or indices
+// picked against one order would be graded against another. Different
+// candidates (different seedKey) still get independent, unpredictable
+// option orders. correctAnswerIndex is remapped to follow the option it
+// points to.
+function shuffleOptionsForCandidate(options, correctAnswerIndex, seedKey) {
+  if (!seedKey || !Array.isArray(options) || options.length < 2) {
+    return { options, correctAnswerIndex };
+  }
+
+  const order = options.map((_, idx) => idx);
+  const random = seededNumber(stableSeed(seedKey));
+
+  for (let i = order.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+
+  const shuffledOptions = order.map((originalIndex) => options[originalIndex]);
+  const shuffledCorrectAnswerIndex = order.indexOf(correctAnswerIndex);
+
+  return { options: shuffledOptions, correctAnswerIndex: shuffledCorrectAnswerIndex };
+}
+
 export async function ensureQuizQuestionsTable() {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS quiz_questions (
@@ -251,7 +285,11 @@ async function ensureQuizPaper(slot) {
   return fetchPaperQuestionRows(paper.id);
 }
 
-function mapQuestionRows(resultRows) {
+// seedId, when provided, deterministically shuffles each question's
+// options for that candidate (see shuffleOptionsForCandidate above).
+// Omitted for admin/management call sites, which need the options in their
+// original stored order.
+function mapQuestionRows(resultRows, seedId) {
   return resultRows.map((row) => {
     const options = JSON.parse(row.options_json);
 
@@ -259,21 +297,29 @@ function mapQuestionRows(resultRows) {
       throw new Error(`Quiz question ${row.external_id || row.id} has invalid options.`);
     }
 
+    const questionId = row.external_id || `db-${row.id}`;
+    const baseCorrectAnswerIndex = Number(row.correct_answer_index ?? 0);
+    const { options: finalOptions, correctAnswerIndex } = shuffleOptionsForCandidate(
+      options,
+      baseCorrectAnswerIndex,
+      seedId ? `${seedId}:${questionId}` : null,
+    );
+
     return {
-      id: row.external_id || `db-${row.id}`,
+      id: questionId,
       section: row.section,
       text: row.question_text,
       imageUrl: row.image_url || "",
-      correctAnswerIndex: Number(row.correct_answer_index ?? 0),
-      options,
+      correctAnswerIndex,
+      options: finalOptions,
     };
   });
 }
 
 // Candidate-facing variant — MUST NOT leak the correct answer index. The
 // client only needs enough to render the question and record a selection.
-function mapQuestionRowsForCandidate(resultRows) {
-  return mapQuestionRows(resultRows).map(({ correctAnswerIndex: _drop, ...safeQuestion }) => safeQuestion);
+function mapQuestionRowsForCandidate(resultRows, seedId) {
+  return mapQuestionRows(resultRows, seedId).map(({ correctAnswerIndex: _drop, ...safeQuestion }) => safeQuestion);
 }
 
 export async function fetchQuizQuestionsForUser(userId) {
@@ -310,7 +356,7 @@ export async function fetchQuizQuestionsForUser(userId) {
       date: slot.slot_date,
       time: slot.start_time,
     },
-    questions: shuffleForCandidate(mapQuestionRowsForCandidate(rows)),
+    questions: shuffleForCandidate(mapQuestionRowsForCandidate(rows, userId)),
     savedResponses,
   };
 }
@@ -422,7 +468,7 @@ export async function submitQuizForUser(userId, responses = {}) {
   }
 
   const paperRows = await ensureQuizPaper(slot);
-  const canonicalQuestions = mapQuestionRows(paperRows); // includes correctAnswerIndex, server-side only
+  const canonicalQuestions = mapQuestionRows(paperRows, userId); // includes correctAnswerIndex, server-side only
 
   const responseMap = responses && typeof responses === "object" ? responses : {};
 
