@@ -245,22 +245,50 @@ export default function PrivacyPolicy() {
   const sectionRefs = useRef({});
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const isAtBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 60;
+
+      if (isAtBottom) {
+        setActiveId(SECTIONS[SECTIONS.length - 1].id);
+      }
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
+        const isAtBottom =
+          window.innerHeight + window.scrollY >=
+          document.documentElement.scrollHeight - 60;
+
+        if (isAtBottom) {
+          setActiveId(SECTIONS[SECTIONS.length - 1].id);
+          return;
+        }
+
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             setActiveId(entry.target.id);
           }
         });
       },
-      { rootMargin: "-15% 0px -70% 0px", threshold: 0 },
+      { rootMargin: "-15% 0px -50% 0px", threshold: 0 },
     );
 
     Object.values(sectionRefs.current).forEach((el) => {
       if (el) observer.observe(el);
     });
 
-    return () => observer.disconnect();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", handleScroll);
+    };
   }, []);
 
   return (
@@ -312,6 +340,7 @@ export default function PrivacyPolicy() {
               <a
                 key={section.id}
                 href={`#${section.id}`}
+                onClick={() => setActiveId(section.id)}
                 className={`pp-toc-link${
                   activeId === section.id ? " active" : ""
                 }`}
