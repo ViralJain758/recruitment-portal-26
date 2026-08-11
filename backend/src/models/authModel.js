@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import db from "../config/db.js";
 
 const ACCESS_TOKEN_EXPIRY = "15m";
+const ADMIN_SESSION_EXPIRY = "3h";
 const REFRESH_TOKEN_EXPIRY = "7d";
 const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 const PENDING_SIGNUP_EXPIRY_MINUTES = 30;
@@ -28,7 +29,7 @@ export function signAdminSession(payload) {
   return jwt.sign(
     { ...payload, role: "admin", type: "admin-session" },
     requiredSecret("JWT_SECRET"),
-    { expiresIn: ACCESS_TOKEN_EXPIRY },
+    { expiresIn: ADMIN_SESSION_EXPIRY },
   );
 }
 

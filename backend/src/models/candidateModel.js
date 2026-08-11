@@ -15,10 +15,18 @@ export const candidateFields = [
   ["recruitReason", "recruit_reason"],
 ];
 
+const APPLICATION_NUMBER_PATTERN = /^\d{6}$/;
+
 export function validateCandidatePayload(body = {}) {
   return candidateFields
     .map(([sourceKey]) => sourceKey)
     .filter((field) => !cleanText(body[field]));
+}
+
+// Application number must be exactly 6 digits — no more, no fewer.
+export function isValidApplicationNumber(value) {
+  const cleaned = cleanText(value);
+  return cleaned !== null && APPLICATION_NUMBER_PATTERN.test(cleaned);
 }
 
 export function mapCandidatePayload(body = {}, user) {

@@ -107,6 +107,14 @@ export function submitQuiz(payload, token) {
   });
 }
 
+export function autosaveQuizAnswers(payload, token) {
+  return request("/api/quiz/autosave", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getQuizQuestionBank(params = {}) {
   const query = new URLSearchParams();
   if (params.slot_day != null && params.slot_day !== "") query.set("slot_day", params.slot_day);

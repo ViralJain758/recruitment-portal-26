@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { submitQuiz } from "../lib/api";
+import { submitQuiz, autosaveQuizAnswers } from "../lib/api";
 const ExamContext = createContext(null);
 
 function readJsonStorage(key, fallback) {
@@ -69,6 +69,11 @@ export const ExamProvider = ({ children }) => {
     () => localStorage.getItem("mlsc_submission_pending") === "true",
   );
 
+  // Reflects the state of the incremental backend autosave (separate from
+  // final submission). Purely informational for the UI — nothing here ever
+  // blocks answering, navigating, or submitting.
+  const [autosaveStatus, setAutosaveStatus] = useState("idle");
+
   // Refs mirroring the latest state for use inside the background retry
   // loop below, so a retry firing minutes after exam completion (once
   // connectivity returns) always submits the final answers instead of a
@@ -76,6 +81,9 @@ export const ExamProvider = ({ children }) => {
   const responsesRef = useRef(responses);
   const candidateRef = useRef(candidate);
   const questionsRef = useRef(questions);
+  const examStartedRef = useRef(examStarted);
+  const examCompletedRef = useRef(examCompleted);
+  const submissionPendingRef = useRef(submissionPending);
   useEffect(() => {
     responsesRef.current = responses;
   }, [responses]);
@@ -85,6 +93,15 @@ export const ExamProvider = ({ children }) => {
   useEffect(() => {
     questionsRef.current = questions;
   }, [questions]);
+  useEffect(() => {
+    examStartedRef.current = examStarted;
+  }, [examStarted]);
+  useEffect(() => {
+    examCompletedRef.current = examCompleted;
+  }, [examCompleted]);
+  useEffect(() => {
+    submissionPendingRef.current = submissionPending;
+  }, [submissionPending]);
 
   // Computed question helper maps cleanly to the active DB paper.
   const currentQuestion = questions[currentQuestionIndex] || null;
@@ -174,7 +191,7 @@ export const ExamProvider = ({ children }) => {
     return () => clearInterval(timer);
   }, [examStarted, examCompleted, examPaused, timeLeft]);
 
-  const startExam = (selectedAdminQuestions = []) => {
+  const startExam = (selectedAdminQuestions = [], savedResponses = {}) => {
     if (
       !Array.isArray(selectedAdminQuestions) ||
       selectedAdminQuestions.length === 0
@@ -192,7 +209,20 @@ export const ExamProvider = ({ children }) => {
     }
 
     setQuestions(selectedAdminQuestions);
-    setResponses({});
+    // Seed with anything already autosaved on the backend (e.g. a prior
+    // session on this or another device lost connectivity mid-quiz).
+    // Local mlsc_responses was just about to be reset anyway since this is
+    // a fresh start, so there's nothing to merge it against here.
+    const validQuestionIds = new Set(selectedAdminQuestions.map((q) => q.id));
+    const seededResponses = {};
+    if (savedResponses && typeof savedResponses === "object") {
+      for (const [questionId, answerIndex] of Object.entries(savedResponses)) {
+        if (validQuestionIds.has(questionId)) {
+          seededResponses[questionId] = answerIndex;
+        }
+      }
+    }
+    setResponses(seededResponses);
     setVisitedQuestions({});
     setReviewStatus({});
     setCurrentQuestionIndex(0);
@@ -298,6 +328,96 @@ export const ExamProvider = ({ children }) => {
     };
   }, [submissionPending]);
 
+  // ── Incremental backend autosave ──────────────────────────────────────
+  // Complements the retry-on-submit logic above: instead of only trying to
+  // deliver answers once at the end, this continuously ships whatever's
+  // been answered so far to the backend while the exam is running. If the
+  // candidate loses connectivity partway through, the server already has
+  // everything up to their last successful sync — and if they end up
+  // reloading on a fresh browser/device, fetchQuizQuestionsForUser hands
+  // those saved answers back so startExam can seed the answer sheet with
+  // them (see the merge in startExam above).
+  const autosaveTimeoutRef = useRef(null);
+  const autosaveIntervalRef = useRef(null);
+  const lastSyncedResponsesRef = useRef("{}");
+
+  const performAutosave = async () => {
+    const submissionCandidate = candidateRef.current;
+    const currentResponses = responsesRef.current;
+
+    if (
+      !submissionCandidate?.accessToken ||
+      !examStartedRef.current ||
+      examCompletedRef.current ||
+      submissionPendingRef.current
+    ) {
+      return;
+    }
+
+    if (Object.keys(currentResponses).length === 0) return;
+
+    const serialized = JSON.stringify(currentResponses);
+    if (serialized === lastSyncedResponsesRef.current) return;
+
+    try {
+      setAutosaveStatus("saving");
+      await autosaveQuizAnswers(
+        { responses: currentResponses },
+        submissionCandidate.accessToken,
+      );
+      lastSyncedResponsesRef.current = serialized;
+      setAutosaveStatus("saved");
+    } catch {
+      // Best-effort only — never surfaces to the candidate as a blocking
+      // error. The next answer, the periodic fallback below, or the
+      // browser's 'online' event will retry automatically.
+      setAutosaveStatus("offline");
+    }
+  };
+
+  // Debounced trigger: fires a couple seconds after the candidate stops
+  // changing answers, so rapid clicking through options doesn't spam the
+  // backend with a request per click.
+  useEffect(() => {
+    if (!examStarted || examCompleted) return undefined;
+
+    if (autosaveTimeoutRef.current) window.clearTimeout(autosaveTimeoutRef.current);
+    autosaveTimeoutRef.current = window.setTimeout(() => {
+      performAutosave();
+    }, 2500);
+
+    return () => {
+      if (autosaveTimeoutRef.current) window.clearTimeout(autosaveTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [responses, examStarted, examCompleted]);
+
+  // Fallback sweep: an interval as a safety net for any change the debounce
+  // above might have missed, plus an immediate attempt on mount and on
+  // reconnect (covers connectivity that was down when a debounced save
+  // tried to fire).
+  useEffect(() => {
+    if (!examStarted || examCompleted) {
+      lastSyncedResponsesRef.current = "{}";
+      setAutosaveStatus("idle");
+      return undefined;
+    }
+
+    const AUTOSAVE_INTERVAL_MS = 20000;
+    autosaveIntervalRef.current = window.setInterval(performAutosave, AUTOSAVE_INTERVAL_MS);
+
+    const handleOnline = () => performAutosave();
+    window.addEventListener("online", handleOnline);
+
+    performAutosave();
+
+    return () => {
+      if (autosaveIntervalRef.current) window.clearInterval(autosaveIntervalRef.current);
+      window.removeEventListener("online", handleOnline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examStarted, examCompleted]);
+
   const resetExamData = () => {
     // If a submission is still trying to reach the server, wiping local
     // state now would throw away the only copy of the candidate's answers
@@ -324,6 +444,7 @@ export const ExamProvider = ({ children }) => {
     ].forEach((key) => localStorage.removeItem(key));
 
     setCandidate(null);
+    setAutosaveStatus("idle");
     setScreenRecordingConsent(false);
     setRecordingSeconds(0);
     setExamStarted(false);
@@ -369,6 +490,7 @@ export const ExamProvider = ({ children }) => {
         resetExamData,
         submissionPending,
         retrySubmission: attemptSubmission,
+        autosaveStatus,
         questions,
         currentQuestion,
         cameraAccess,

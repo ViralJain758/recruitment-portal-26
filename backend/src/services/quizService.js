@@ -114,6 +114,24 @@ export async function ensureQuizQuestionsTable() {
   await db.execute(
     "CREATE INDEX IF NOT EXISTS idx_quiz_paper_questions_paper ON quiz_paper_questions(paper_id, question_order)",
   );
+
+  // Incremental autosave — one row per (candidate, question), upserted as
+  // the candidate answers so an answer sheet survives a lost connection,
+  // a closed tab, or a device swap without waiting for final submission.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS quiz_autosave_answers (
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      candidate_id          INTEGER NOT NULL REFERENCES candidate_profiles(id) ON DELETE CASCADE,
+      question_external_id  TEXT NOT NULL,
+      answer_index          INTEGER NOT NULL,
+      updated_at            TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(candidate_id, question_external_id)
+    )
+  `);
+
+  await db.execute(
+    "CREATE INDEX IF NOT EXISTS idx_quiz_autosave_candidate ON quiz_autosave_answers(candidate_id)",
+  );
 }
 
 async function getCandidateSlotGroup(userId) {
@@ -279,6 +297,12 @@ export async function fetchQuizQuestionsForUser(userId) {
 
   const rows = await ensureQuizPaper(slot);
 
+  // Any answers autosaved from a previous session (lost connection, closed
+  // tab, different device) get handed back alongside the questions so the
+  // client can merge them into its local answer sheet on load, instead of
+  // only relying on this browser's own localStorage.
+  const savedResponses = await fetchAutosavedAnswersForUser(userId);
+
   return {
     slot: {
       day: slot.slot_day,
@@ -287,7 +311,86 @@ export async function fetchQuizQuestionsForUser(userId) {
       time: slot.start_time,
     },
     questions: shuffleForCandidate(mapQuestionRowsForCandidate(rows)),
+    savedResponses,
   };
+}
+
+async function getCandidateIdForUser(userId) {
+  const profileResult = await db.execute({
+    sql: `SELECT id FROM candidate_profiles WHERE user_id = ?`,
+    args: [userId],
+  });
+
+  return profileResult.rows[0]?.id || null;
+}
+
+// Returns { [questionExternalId]: answerIndex } for everything this
+// candidate has autosaved so far.
+export async function fetchAutosavedAnswersForUser(userId) {
+  const candidateId = await getCandidateIdForUser(userId);
+  if (!candidateId) return {};
+
+  const result = await db.execute({
+    sql: `SELECT question_external_id, answer_index
+          FROM quiz_autosave_answers
+          WHERE candidate_id = ?`,
+    args: [candidateId],
+  });
+
+  const savedResponses = {};
+  for (const row of result.rows) {
+    savedResponses[row.question_external_id] = Number(row.answer_index);
+  }
+  return savedResponses;
+}
+
+// Upserts a batch of in-progress answers for a candidate who hasn't
+// submitted yet. Silently ignores malformed entries rather than failing
+// the whole batch — a single bad key shouldn't block the rest of the
+// candidate's answers from being saved.
+export async function autosaveQuizAnswersForUser(userId, responses = {}) {
+  const candidateId = await getCandidateIdForUser(userId);
+  if (!candidateId) {
+    throw new Error("Candidate not found.");
+  }
+
+  const quizResult = await db.execute({
+    sql: `SELECT quiz_submitted_at FROM candidate_quiz WHERE candidate_id = ?`,
+    args: [candidateId],
+  });
+
+  if (quizResult.rows[0]?.quiz_submitted_at) {
+    // Not an error — the client's background sync may fire once more right
+    // after final submission goes through. Just report nothing was saved.
+    return { saved: 0 };
+  }
+
+  const responseMap = responses && typeof responses === "object" ? responses : {};
+  const entries = Object.entries(responseMap).filter(([questionId, answerIndex]) => {
+    return (
+      typeof questionId === "string" &&
+      questionId.length > 0 &&
+      questionId.length <= 200 &&
+      Number.isInteger(Number(answerIndex)) &&
+      Number(answerIndex) >= 0
+    );
+  });
+
+  if (entries.length === 0) return { saved: 0 };
+
+  await db.batch(
+    entries.map(([questionId, answerIndex]) => ({
+      sql: `INSERT INTO quiz_autosave_answers (candidate_id, question_external_id, answer_index, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(candidate_id, question_external_id) DO UPDATE SET
+              answer_index = excluded.answer_index,
+              updated_at = datetime('now')`,
+      args: [candidateId, questionId, Number(answerIndex)],
+    })),
+    "write",
+  );
+
+  return { saved: entries.length };
 }
 
 export async function submitQuizForUser(userId, responses = {}) {
@@ -342,6 +445,15 @@ export async function submitQuizForUser(userId, responses = {}) {
             updated_at = datetime('now')`,
     args: [candidateId, score, new Date().toISOString()],
   });
+
+  // Autosave rows have done their job once the real submission lands —
+  // clear them so they don't linger indefinitely.
+  await db
+    .execute({
+      sql: `DELETE FROM quiz_autosave_answers WHERE candidate_id = ?`,
+      args: [candidateId],
+    })
+    .catch(() => {});
 
   return {
     score,

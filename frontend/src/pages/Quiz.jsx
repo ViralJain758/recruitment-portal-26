@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useExam } from '../context/ExamContext';
 import { PageContainer } from '../components/quiz/layout/PageContainer';
 import { TimerCard } from '../components/quiz/quiz/TimerCard';
+import { AutosaveIndicator } from '../components/quiz/quiz/AutosaveIndicator';
 import { QuestionCard } from '../components/quiz/quiz/QuestionCard';
 import { QuestionPalette } from '../components/quiz/quiz/QuestionPalette';
 import { NavigationBar } from '../components/quiz/quiz/NavigationBar';
@@ -684,6 +685,7 @@ export const Quiz = () => {
               Warnings: {securityWarnings}/3
             </div>
             <TimerCard />
+            <AutosaveIndicator />
             <ThemeToggle />
           </div>
         </div>

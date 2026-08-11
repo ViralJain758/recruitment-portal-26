@@ -119,6 +119,16 @@ export const quizSubmitLimiter = makeLimiter("quiz_submit", {
   message: "Too many quiz submission attempts. Please try again later.",
 });
 
+// Autosave fires far more often than submit (debounced on every answer
+// change plus a periodic fallback), but each request is tiny and idempotent
+// per-question, so the ceiling is generous relative to the 20-minute exam
+// window rather than tight like quizSubmitLimiter.
+export const quizAutosaveLimiter = makeLimiter("quiz_autosave", {
+  windowMs: 60 * 1000,
+  limit: 30,
+  message: "Too many autosave requests. Please slow down.",
+});
+
 // ── Admin endpoints ───────────────────────────────────────────────────────
 // These sit behind requireAdminSession/requireScannerPassword already, so
 // the threat model here isn't an anonymous attacker — it's a stolen/replayed
@@ -179,6 +189,7 @@ export default {
   candidateDetailsLimiter,
   quizLimiter,
   quizSubmitLimiter,
+  quizAutosaveLimiter,
   adminReadLimiter,
   adminWriteLimiter,
   publicStatusLimiter,

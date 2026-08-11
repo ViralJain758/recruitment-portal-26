@@ -97,6 +97,7 @@ const domainExperienceField = [
 
 const WORD_LIMIT = 150;
 const PHONE_LENGTH = 10;
+const APPLICATION_NUMBER_LENGTH = 6;
 
 // Textarea/long-answer fields that should be capped at WORD_LIMIT words
 const wordLimitedFields = [
@@ -168,6 +169,14 @@ export default function CandidateDetails({
       return;
     }
 
+    if (name === "applicationNumber") {
+      const digitsOnly = value
+        .replace(/\D/g, "")
+        .slice(0, APPLICATION_NUMBER_LENGTH);
+      setValues((prev) => ({ ...prev, applicationNumber: digitsOnly }));
+      return;
+    }
+
     if (wordLimitedFields.includes(name)) {
       const limited = limitWords(value, WORD_LIMIT);
       setValues((prev) => ({ ...prev, [name]: limited }));
@@ -206,6 +215,12 @@ export default function CandidateDetails({
       extraProps.maxLength = PHONE_LENGTH;
       extraProps.helperText = `${values.phoneNumber.length}/${PHONE_LENGTH} digits`;
     }
+    if (name === "applicationNumber") {
+      extraProps.inputMode = "numeric";
+      extraProps.pattern = `[0-9]{${APPLICATION_NUMBER_LENGTH}}`;
+      extraProps.maxLength = APPLICATION_NUMBER_LENGTH;
+      extraProps.helperText = `${values.applicationNumber.length}/${APPLICATION_NUMBER_LENGTH} digits`;
+    }
 
     return (
       <FormField
@@ -236,6 +251,13 @@ export default function CandidateDetails({
 
     if (values.phoneNumber.length !== PHONE_LENGTH) {
       setError(`Phone number must be exactly ${PHONE_LENGTH} digits.`);
+      return;
+    }
+
+    if (values.applicationNumber.length !== APPLICATION_NUMBER_LENGTH) {
+      setError(
+        `Application number must be exactly ${APPLICATION_NUMBER_LENGTH} digits.`,
+      );
       return;
     }
 

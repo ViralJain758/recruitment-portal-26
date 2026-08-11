@@ -16,6 +16,7 @@ import {
 
 import {
   findCandidateByUserId,
+  isValidApplicationNumber,
   mapCandidatePayload,
   upsertCandidateProfile,
   validateCandidatePayload,
@@ -361,6 +362,13 @@ export async function saveCandidate(body, user) {
     return {
       status: 400,
       error: `Missing required candidate details: ${missingFields.join(", ")}`,
+    };
+  }
+
+  if (!isValidApplicationNumber(body.applicationNumber)) {
+    return {
+      status: 400,
+      error: "Application number must be exactly 6 digits.",
     };
   }
 
